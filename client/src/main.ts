@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import './style.css';
+import { RunFlow } from './run-flow';
 import { Progression, type Upgrade } from './progression';
 import { enemyTypes, waves, safeSpawn, type EnemyKind } from './waves';
 import { HunterAbility } from './hunter';
@@ -49,7 +50,7 @@ function start() {
  const enemies:Enemy[]=[];const pickups:THREE.Group[]=[];
  let waveIndex=0,waveDelay=0,pending:EnemyKind[]=[],victorious=false;
  const enemyPanel=document.createElement('section');enemyPanel.id='enemy-info';enemyPanel.innerHTML='<span class="eyebrow">WAVE 1 / 3</span><p>Preparing encounter</p>';document.body.append(enemyPanel);
- const victory=document.createElement('section');victory.id='victory';victory.hidden=true;victory.innerHTML='<h2>Victory</h2><p>All three waves cleared.</p><button type="button">Restart</button>';document.body.append(victory);
+ const victory=document.createElement('section');victory.id='victory';victory.hidden=true;victory.innerHTML='<h2>Victory</h2><p>All three waves cleared.</p><div class="run-summary"></div><button type="button" class="play-again">Play Again</button><button type="button" class="return-menu">Return to Menu</button>';document.body.append(victory);
  function updateEnemyHealth(){enemyPanel.querySelector('.eyebrow')!.textContent=`WAVE ${waveIndex+1} / ${waves.length}`;enemyPanel.querySelector('p')!.textContent=waveDelay>0?`Next wave in ${Math.ceil(waveDelay)}s`:enemies.filter(e=>e.health>0).map(e=>`${enemyTypes[e.kind].name} ${e.health} HP`).join(' · ')||'Wave cleared';}
  function dropPickup(position:THREE.Vector3){const pickup=new THREE.Group();pickup.position.copy(position);scene.add(pickup);const green=material(0x6bff9b,0x27a554);box(.65,.25,.65,0,.35,0,green,pickup);box(.14,.08,.45,0,.52,0,material(0xffffff),pickup);box(.45,.08,.14,0,.52,0,material(0xffffff),pickup);pickups.push(pickup);}
  function disposeGroup(group:THREE.Group){scene.remove(group);group.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose();}});}
@@ -63,12 +64,25 @@ function start() {
   }
  }
  const damageOverlay=document.createElement('div');damageOverlay.id='damage-flash';document.body.append(damageOverlay);
- const defeat=document.createElement('section');defeat.id='defeat';defeat.hidden=true;defeat.innerHTML='<h2>Defeated</h2><p>The pursuer caught you. Try again.</p><button type="button">Restart</button>';document.body.append(defeat);
+ const defeat=document.createElement('section');defeat.id='defeat';defeat.hidden=true;defeat.innerHTML='<h2>Defeated</h2><p>The pursuer caught you. Try again.</p><div class="run-summary"></div><button type="button" class="play-again">Play Again</button><button type="button" class="return-menu">Return to Menu</button>';document.body.append(defeat);
  const healingOverlay=document.createElement('div');healingOverlay.id='healing-flash';document.body.append(healingOverlay);
  const healingNotice=document.createElement('div');healingNotice.id='healing-notice';healingNotice.setAttribute('role','status');healingNotice.setAttribute('aria-live','polite');document.body.append(healingNotice);
  let healingTime=0,healedAmount=0;
  let damageTime=0;
  function updatePlayerHealth(){document.querySelector('aside strong')!.innerHTML=`${Math.ceil(state.health)} <small>/ ${state.maxHealth} HP</small>`;document.querySelector<HTMLElement>('aside .health i')!.style.width=`${state.health/state.maxHealth*100}%`;document.querySelector('aside p')!.textContent=state.health===0?'Operator defeated':damageTime>0?'Taking damage · Find cover':healingTime>0?`Healed +${healedAmount} HP`:hunter.remaining>0?'Invisible · Healing 5 HP/s':'Systems nominal';}
+ const flow=new RunFlow();
+ const startMenu=document.createElement('section');startMenu.id='start-menu';startMenu.innerHTML='<h2>Titanfall Arena</h2><p>Hunter · Survive three waves</p><div class="controls-guide"><p>Move: WASD / arrow keys / touch joystick</p><p>Attack: Space / Attack · Cloak: Q / Cloak</p><p>Revive: hold E / Revive near the blue ally while cloaked</p><p>Upgrades: 1 / 2 / 3 or select a button</p><p>Pause: Esc / Pause · Desktop and iPad landscape recommended</p></div><button type="button">Start Run</button>';document.body.append(startMenu);
+ const pauseScreen=document.createElement('section');pauseScreen.id='pause-screen';pauseScreen.hidden=true;pauseScreen.innerHTML='<h2>Paused</h2><p>Encounter and timers are paused.</p><button type="button" class="resume">Resume</button><button type="button" class="return-menu">Return to Menu</button>';document.body.append(pauseScreen);
+ const pauseButton=document.createElement('button');pauseButton.id='pause-button';pauseButton.type='button';pauseButton.textContent='Pause · Esc';document.body.append(pauseButton);
+ function updateFlow(){startMenu.hidden=flow.mode!=='menu';pauseScreen.hidden=flow.mode!=='paused';pauseButton.hidden=flow.mode!=='playing';pauseButton.disabled=progression.paused;}
+ function togglePause(){if(progression.paused)return;if(flow.mode==='playing'){flow.pause();reset();pauseScreen.querySelector<HTMLButtonElement>('.resume')!.focus();}else if(flow.mode==='paused'){flow.resume();reset();}updateFlow();}
+ function returnToMenu(){restart();flow.menu();reset();updateFlow();startMenu.querySelector<HTMLButtonElement>('button')!.focus();}
+ function finishRun(screen:HTMLElement){flow.finish();screen.querySelector('.run-summary')!.textContent=`Enemies defeated: ${flow.kills} · Level: ${progression.level} · Run time: ${flow.time} · Upgrades: ${flow.upgrades.join('; ')||'None'}`;updateFlow();}
+ pauseButton.addEventListener('click',togglePause);pauseScreen.querySelector('.resume')!.addEventListener('click',togglePause);pauseScreen.querySelector('.return-menu')!.addEventListener('click',returnToMenu);
+ startMenu.querySelector('button')!.addEventListener('click',restart);
+ for(const screen of [defeat,victory])screen.querySelector('.return-menu')!.addEventListener('click',returnToMenu);
+ window.addEventListener('keydown',e=>{if(e.code==='Escape'){e.preventDefault();if(!e.repeat)togglePause();}});
+ document.addEventListener('visibilitychange',()=>{if(document.hidden&&flow.mode==='playing'&&!progression.paused){flow.pause();reset();updateFlow();}});
  const progression=new Progression();
  const xpPanel=document.createElement('section');xpPanel.id='xp-hud';xpPanel.innerHTML='<span>Level 1</span><progress max="100" value="0" aria-label="XP progress"></progress><small>0 / 100 XP</small>';document.body.append(xpPanel);
  const upgradeScreen=document.createElement('section');upgradeScreen.id='upgrades';upgradeScreen.hidden=true;upgradeScreen.setAttribute('role','dialog');upgradeScreen.setAttribute('aria-modal','true');upgradeScreen.setAttribute('aria-label','Choose level upgrade');
@@ -80,7 +94,7 @@ function start() {
   upgradeKinds.forEach((kind,i)=>{upgradeScreen.querySelector<HTMLButtonElement>(`[data-upgrade="${kind}"]`)!.textContent=`${i+1}. ${progression.effect(kind)}`;});
  }
  function showUpgrades(){updateProgression();if(progression.paused){reset();upgradeScreen.querySelector<HTMLButtonElement>('button')!.focus();}}
- function chooseUpgrade(kind:Upgrade){if(!progression.choose(kind))return;
+ function chooseUpgrade(kind:Upgrade){const chosen=progression.effect(kind);if(!progression.choose(kind))return;flow.upgrades.push(chosen);
   if(kind==='health'){state.maxHealth=progression.maxHealth;state.health=Math.min(state.maxHealth,state.health+25);}
   hunter.cooldownDuration=progression.cloakCooldown;hunter.cooldown=Math.min(hunter.cooldown,progression.cloakCooldown);
   reset();updatePlayerHealth();showUpgrades();
@@ -96,20 +110,20 @@ function start() {
  const abilityPanel=document.createElement('section');abilityPanel.id='hunter-hud';abilityPanel.innerHTML='<span class="eyebrow">HUNTER / CLOAK</span><p>Ready · Q</p><label>Downed ally · Cloak and hold E nearby</label><progress max="3" value="0" aria-label="Revival progress"></progress>';document.body.append(abilityPanel);
  const playerMaterials=new Set<THREE.MeshStandardMaterial>();
  player.traverse(o=>{if(o instanceof THREE.Mesh&&o.material instanceof THREE.MeshStandardMaterial){const m=o.material.clone();o.material=m;playerMaterials.add(m);}});
- function activateCloak(){if(document.hidden||progression.paused)return;if(hunter.activate(state.health>0&&!victorious)){for(const e of enemies){e.path=[];e.pathTimer=0;}}}
+ function activateCloak(){if(document.hidden||flow.mode!=='playing'||progression.paused)return;if(hunter.activate(state.health>0&&!victorious)){for(const e of enemies){e.path=[];e.pathTimer=0;}}}
  abilityButton.addEventListener('click',activateCloak);
  window.addEventListener('keydown',e=>{
   if(e.code==='KeyQ'){e.preventDefault();if(!e.repeat)activateCloak();}
-  if(e.code==='KeyE'){e.preventDefault();if(!e.repeat&&hunter.remaining>0&&state.health>0&&!progression.paused)hunter.reviveHeld=true;}
+  if(e.code==='KeyE'){e.preventDefault();if(!e.repeat&&hunter.remaining>0&&state.health>0&&flow.mode==='playing'&&!progression.paused)hunter.reviveHeld=true;}
  });
  window.addEventListener('keyup',e=>{if(e.code==='KeyE')hunter.interruptRevival();});
- reviveButton.addEventListener('pointerdown',e=>{if(hunter.remaining>0&&state.health>0&&!progression.paused){reviveButton.setPointerCapture(e.pointerId);hunter.reviveHeld=true;}});
+ reviveButton.addEventListener('pointerdown',e=>{if(hunter.remaining>0&&state.health>0&&flow.mode==='playing'&&!progression.paused){reviveButton.setPointerCapture(e.pointerId);hunter.reviveHeld=true;}});
  for(const event of ['pointerup','pointercancel','lostpointercapture'])reviveButton.addEventListener(event,()=>hunter.interruptRevival());
  function attack(){
-  if(document.hidden||state.health===0||victorious||progression.paused||cooldown>0)return;
+  if(document.hidden||flow.mode!=='playing'||state.health===0||victorious||progression.paused||cooldown>0)return;
   hunter.end();cooldown=.45;pulseTime=.25;pulse.position.set(player.position.x,.08,player.position.z);
   let enemyHit=false;
-  for(const e of enemies){if(e.health>0&&player.position.distanceTo(e.mesh.position)<=3){e.health=Math.max(0,e.health-progression.attackDamage);e.flash=.18;enemyHit=true;if(e.health===0){e.mesh.visible=false;dropPickup(e.mesh.position);progression.award(enemyTypes[e.kind].xp);}}}updateEnemyHealth();showUpgrades();
+  for(const e of enemies){if(e.health>0&&player.position.distanceTo(e.mesh.position)<=3){e.health=Math.max(0,e.health-progression.attackDamage);e.flash=.18;enemyHit=true;if(e.health===0){e.mesh.visible=false;dropPickup(e.mesh.position);progression.award(enemyTypes[e.kind].xp);flow.kills++;}}}updateEnemyHealth();showUpgrades();
   if(targetHealth<=0){feedback.textContent=enemyHit?`Enemy hit! −${progression.attackDamage} HP`:'Target respawning…';return;}
   if(player.position.distanceTo(target.position)>3){feedback.textContent=enemyHit?`Enemy hit! −${progression.attackDamage} HP`:'Miss · Move within 3 meters';return;}
   targetHealth=Math.max(0,targetHealth-progression.attackDamage);flash=.18;updateHealth();
@@ -133,20 +147,21 @@ function start() {
  const targetBounds={x:target.position.x,z:target.position.z,w:1.1,d:1.1};
  function blocked(x:number,z:number){return obstacles.some(o=>overlapsBox(x,z,o))||(targetHealth>0&&overlapsBox(x,z,targetBounds));}
  function restart(){
+  flow.start();
   reset();progression.reset();state.maxHealth=100;updateProgression();hunter.reset();allyBody.rotation.z=0;allyBody.position.y=.25;allyMaterial.emissive.setHex(0x183b77);
   for(const e of enemies)disposeGroup(e.mesh);enemies.length=0;for(const p of pickups)disposeGroup(p);pickups.length=0;
   waveIndex=0;waveDelay=0;pending=[...waves[0]];victorious=false;victory.hidden=true;
   healingTime=0;healedAmount=0;healingOverlay.style.opacity='0';healingNotice.textContent='';state.health=100;damageTime=0;cooldown=0;flash=0;pulseTime=0;respawn=0;
   targetHealth=100;target.visible=true;targetMaterial.emissive.setHex(0x55300c);updateHealth();feedback.textContent='Get close · Space or Attack';
-  player.position.set(0,0,0);player.rotation.y=0;camera.position.copy(cameraOffset);look.set(0,0,0);updatePlayerHealth();defeat.hidden=true;attackButton.disabled=false;spawnPending();updateEnemyHealth();
+  player.position.set(0,0,0);player.rotation.y=0;camera.position.copy(cameraOffset);look.set(0,0,0);updatePlayerHealth();defeat.hidden=true;attackButton.disabled=false;spawnPending();updateEnemyHealth();updateFlow();
  }
- defeat.querySelector('button')!.addEventListener('click',restart);victory.querySelector('button')!.addEventListener('click',restart);
+ defeat.querySelector('.play-again')!.addEventListener('click',restart);victory.querySelector('.play-again')!.addEventListener('click',restart);
  const cameraOffset=new THREE.Vector3(0,19,16);camera.position.copy(cameraOffset);const look=new THREE.Vector3();
  function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}window.addEventListener('resize',resize);resize();
  renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();fail('Graphics context lost. Reload to resume.');});
- let previous=performance.now();function frame(now:number){const dt=document.hidden||state.health===0||victorious||progression.paused?0:Math.min((now-previous)/1000,.05);previous=now;
+ let previous=performance.now();function frame(now:number){const dt=document.hidden||flow.mode!=='playing'||state.health===0||victorious||progression.paused?0:Math.min((now-previous)/1000,.05);previous=now;flow.tick(dt);updateFlow();
  cooldown=Math.max(0,cooldown-dt);flash=Math.max(0,flash-dt);pulseTime=Math.max(0,pulseTime-dt);
- attackButton.disabled=cooldown>0||state.health===0||victorious||progression.paused;
+ attackButton.disabled=flow.mode!=='playing'||cooldown>0||state.health===0||victorious||progression.paused;
  targetMaterial.emissive.setHex(flash>0?0xffffff:0x55300c);
  pulse.scale.setScalar(1+(1-pulseTime/.25)*4);pulse.material.opacity=pulseTime/.25*.65;
  if(targetHealth===0){
@@ -172,16 +187,16 @@ function start() {
     if(blocked(x,z)){e.path=[];e.pathTimer=0;break;}e.mesh.position.set(x,0,z);e.mesh.rotation.y=Math.atan2(-dx,-dz);budget-=step;
    }
   }
-  if(e.mesh.position.distanceTo(player.position)<=1.6&&e.cooldown===0){hunter.damage();state.health=Math.max(0,state.health-stats.damage);e.cooldown=stats.cooldown;damageTime=.35;updatePlayerHealth();if(state.health===0){reset();defeat.hidden=false;defeat.querySelector<HTMLButtonElement>('button')!.focus();}}
+  if(e.mesh.position.distanceTo(player.position)<=1.6&&e.cooldown===0){hunter.damage();state.health=Math.max(0,state.health-stats.damage);e.cooldown=stats.cooldown;damageTime=.35;updatePlayerHealth();if(state.health===0){reset();defeat.hidden=false;finishRun(defeat);defeat.querySelector<HTMLButtonElement>('button')!.focus();}}
  }
  if(dt>0){
   if(pending.length)spawnPending();
   if(!pending.length&&enemies.every(e=>e.health===0)){
-   if(waveIndex===waves.length-1){victorious=true;reset();victory.hidden=false;victory.querySelector<HTMLButtonElement>('button')!.focus();}
+   if(waveIndex===waves.length-1){victorious=true;reset();victory.hidden=false;finishRun(victory);victory.querySelector<HTMLButtonElement>('button')!.focus();}
    else{if(waveDelay===0)waveDelay=4;else{waveDelay=Math.max(0,waveDelay-dt);if(waveDelay===0){for(const e of enemies)disposeGroup(e.mesh);enemies.length=0;waveIndex++;pending=[...waves[waveIndex]];spawnPending();}}}
   }
  }updateEnemyHealth();
- const input=new THREE.Vector2(Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'))+touch.x,Number(keys.has('KeyS')||keys.has('ArrowDown'))-Number(keys.has('KeyW')||keys.has('ArrowUp'))+touch.y);if(state.health===0||victorious||progression.paused)input.set(0,0);if(input.length()>1)input.normalize();
+ const input=new THREE.Vector2(Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'))+touch.x,Number(keys.has('KeyS')||keys.has('ArrowDown'))-Number(keys.has('KeyW')||keys.has('ArrowUp'))+touch.y);if(flow.mode!=='playing'||state.health===0||victorious||progression.paused)input.set(0,0);if(input.length()>1)input.normalize();
  // Small steps keep movement from crossing collision surfaces even after a slow frame.
  const steps=Math.max(1,Math.ceil(6*dt/.1));for(let i=0;i<steps;i++){const x=THREE.MathUtils.clamp(player.position.x+input.x*6*dt/steps,-limit,limit);if(!blocked(x,player.position.z))player.position.x=x;const z=THREE.MathUtils.clamp(player.position.z+input.y*6*dt/steps,-limit,limit);if(!blocked(player.position.x,z))player.position.z=z;}
  state.health=hunter.tick(dt,state.health,state.maxHealth,player.position.distanceTo(ally.position)<=2);
@@ -192,14 +207,14 @@ function start() {
  if(player.position.distanceTo(ally.position)>2)hunter.interruptRevival();
  for(const m of playerMaterials){m.transparent=hunter.remaining>0;m.opacity=hunter.remaining>0?.25:1;}
  halo.material.opacity=hunter.remaining>0?.3:1;halo.material.transparent=true;
- abilityButton.disabled=state.health===0||victorious||progression.paused||hunter.cooldown>0;
+ abilityButton.disabled=flow.mode!=='playing'||state.health===0||victorious||progression.paused||hunter.cooldown>0;
  abilityPanel.querySelector('p')!.textContent=hunter.remaining>0?`Invisible ${hunter.remaining.toFixed(1)}s · Healing 5 HP/s`:hunter.cooldown>0?`Cooldown ${hunter.cooldown.toFixed(1)}s`:'Ready · Q / Cloak';
  abilityPanel.querySelector('label')!.textContent=hunter.allyRevived?'Ally revived!':hunter.reviveProgress>0?`Reviving ${(hunter.reviveProgress/3*100).toFixed(0)}%`:hunter.remaining>0?'Hold E / Revive within 2 meters':'Downed ally · Cloak to revive';
  abilityPanel.querySelector('progress')!.value=hunter.allyRevived?3:hunter.reviveProgress;
- reviveButton.disabled=state.health===0||victorious||progression.paused||hunter.remaining===0||hunter.allyRevived||player.position.distanceTo(ally.position)>2;
+ reviveButton.disabled=flow.mode!=='playing'||state.health===0||victorious||progression.paused||hunter.remaining===0||hunter.allyRevived||player.position.distanceTo(ally.position)>2;
  if(hunter.allyRevived){allyBody.rotation.z=Math.PI/2;allyBody.position.y=.9;allyMaterial.emissive.setHex(0x27a554);}
  healingOverlay.style.opacity=String(Math.min(healingTime/.35,1)*.6);healingNotice.style.opacity=healingTime>0?'1':'0';
  if(input.lengthSq()>.001){const target=Math.atan2(-input.x,-input.y);player.rotation.y+=Math.atan2(Math.sin(target-player.rotation.y),Math.cos(target-player.rotation.y))*(1-Math.exp(-14*dt));}body.position.y=1+(input.lengthSq()>.01?Math.sin(now*.015)*.04:0);
  camera.position.lerp(player.position.clone().add(cameraOffset),1-Math.exp(-5*dt));look.lerp(player.position,1-Math.exp(-7*dt));camera.lookAt(look);renderer.render(scene,camera);requestAnimationFrame(frame);
- }updateProgression();pending=[...waves[0]];spawnPending();updateEnemyHealth();requestAnimationFrame(frame);
+ }updateProgression();updateFlow();startMenu.querySelector<HTMLButtonElement>('button')!.focus();pending=[...waves[0]];spawnPending();updateEnemyHealth();requestAnimationFrame(frame);
 }

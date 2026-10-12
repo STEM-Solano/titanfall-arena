@@ -1,4 +1,4 @@
-# titanfall-arena — Milestone 6
+# titanfall-arena — Milestone 7
 Original sci-fi action RPG enemy encounter prototype. TypeScript, Vite and Three.js.
 
 ## Run locally
@@ -62,3 +62,7 @@ Pursuer awards 30 XP, Runner 25 XP, Armored 60 XP. Training target awards none. 
 
 Each level pauses gameplay, wave transitions, healing, cooldowns and enemy attacks. Choose with keys 1/2/3, Tab plus Enter/Space, mouse click or touch. Exact current-to-new effects appear before selection: attack +10 damage; maximum health +25 and current health +25; invisibility cooldown −3 seconds, minimum 6 seconds. Cooldown is measured from activation; a cooldown upgrade also caps the currently remaining cooldown at the new duration. Choices stack. Restart resets XP, level and upgrades. No save persists beyond the current run.
 Desktop and iPad landscape remain priorities; the iPhone layout and mobile zoom problems documented above remain unresolved.
+
+## Milestone 7 — v0.7.0 run flow
+The game opens at a Start Run menu with PC and touch controls. Esc / Pause freezes movement, attacks, healing, enemy AI, wave transitions, cooldowns and the active run clock. Resume preserves the encounter; held input and incomplete revival progress are cleared to avoid unintended actions. Upgrade choices already pause the encounter and must be completed before manual pause. Switching tabs automatically pauses an active encounter.
+Victory and defeat show enemies defeated, level reached, chosen upgrades and active run time (excluding menu, pause and upgrades). Play Again fully resets the encounter and starts wave one. Return to Menu resets the encounter and opens the start screen. Mouse, keyboard and touch buttons are supported. Desktop / iPad landscape remain priorities; iPhone layout and zoom limitations remain unresolved.
