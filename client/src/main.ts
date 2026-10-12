@@ -59,7 +59,13 @@ function start() {
  function drag(e:PointerEvent){const r=pad.getBoundingClientRect();touch.set((e.clientX-r.left-r.width/2)/38,(e.clientY-r.top-r.height/2)/38);if(touch.length()>1)touch.normalize();stick.style.transform=`translate(${touch.x*38}px,${touch.y*38}px)`;}
  pad.addEventListener('pointerdown',e=>{if(pointer!==null)return;pointer=e.pointerId;pad.setPointerCapture(pointer);drag(e);});pad.addEventListener('pointermove',e=>{if(e.pointerId===pointer)drag(e);});for(const name of ['pointerup','pointercancel','lostpointercapture'])pad.addEventListener(name,()=>{touch.set(0,0);pointer=null;stick.style.transform='';});
  const radius=.65,limit=19-radius;
- function blocked(x:number,z:number){return obstacles.some(o=>{const nx=Math.max(o.x-o.w/2,Math.min(x,o.x+o.w/2));const nz=Math.max(o.z-o.d/2,Math.min(z,o.z+o.d/2));return (x-nx)**2+(z-nz)**2<radius**2;});}
+ function overlapsBox(x:number,z:number,o:{x:number,z:number,w:number,d:number},padding=0){
+  const nx=Math.max(o.x-o.w/2,Math.min(x,o.x+o.w/2));
+  const nz=Math.max(o.z-o.d/2,Math.min(z,o.z+o.d/2));
+  return (x-nx)**2+(z-nz)**2<(radius+padding)**2;
+ }
+ const targetBounds={x:target.position.x,z:target.position.z,w:1.1,d:1.1};
+ function blocked(x:number,z:number){return obstacles.some(o=>overlapsBox(x,z,o))||(targetHealth>0&&overlapsBox(x,z,targetBounds));}
  const cameraOffset=new THREE.Vector3(0,19,16);camera.position.copy(cameraOffset);const look=new THREE.Vector3();
  function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}window.addEventListener('resize',resize);resize();
  renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();fail('Graphics context lost. Reload to resume.');});
@@ -68,7 +74,17 @@ function start() {
  attackButton.disabled=cooldown>0;
  targetMaterial.emissive.setHex(flash>0?0xffffff:0x55300c);
  pulse.scale.setScalar(1+(1-pulseTime/.25)*4);pulse.material.opacity=pulseTime/.25*.65;
- if(respawn>0){respawn=Math.max(0,respawn-dt);if(respawn===0){targetHealth=100;target.visible=true;updateHealth();feedback.textContent='Target ready · Get close and attack';}}
+ if(targetHealth===0){
+  respawn=Math.max(0,respawn-dt);
+  if(respawn===0){
+   // A small clearance margin keeps the returning target from touching the player.
+   if(overlapsBox(player.position.x,player.position.z,targetBounds,.05)){
+    feedback.textContent='Respawn waiting · Clear the target area';
+   }else{
+    targetHealth=100;target.visible=true;updateHealth();feedback.textContent='Target ready · Get close and attack';
+   }
+  }
+ }
  const input=new THREE.Vector2(Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'))+touch.x,Number(keys.has('KeyS')||keys.has('ArrowDown'))-Number(keys.has('KeyW')||keys.has('ArrowUp'))+touch.y);if(input.length()>1)input.normalize();
  // Small steps keep movement from crossing collision surfaces even after a slow frame.
  const steps=Math.max(1,Math.ceil(6*dt/.1));for(let i=0;i<steps;i++){const x=THREE.MathUtils.clamp(player.position.x+input.x*6*dt/steps,-limit,limit);if(!blocked(x,player.position.z))player.position.x=x;const z=THREE.MathUtils.clamp(player.position.z+input.y*6*dt/steps,-limit,limit);if(!blocked(player.position.x,z))player.position.z=z;}
