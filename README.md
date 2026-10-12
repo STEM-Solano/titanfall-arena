@@ -36,3 +36,6 @@ Health is a fixed prototype value; multiplayer, bosses and PvP are outside this 
 
 ## Milestone 3 encounter
 One pursuer navigates around obstacles and the living training target using a clearance-tested grid path. It moves at 2.6 meters/second and deals 10 damage within 1.6 meters every 1.2 seconds. Your attack also deals 25 damage to the enemy within 3 meters (75 enemy HP). Player damage flashes red. At zero HP, movement and combat stop; Restart resets player, enemy, target, camera, inputs, health and timers. The defeated enemy stays down until Restart or page reload. Hidden tabs pause the encounter.
+
+### Health pickup (v0.3.1)
+The defeated enemy drops one green medical pickup. Walk within 1 meter to restore 25 HP, capped at 100; green feedback shows the actual amount healed. Collection removes it, including at full health. Restart clears the pickup and healing feedback.

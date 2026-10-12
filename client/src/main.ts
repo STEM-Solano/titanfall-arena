@@ -48,15 +48,22 @@ function start() {
  const enemyPanel=document.createElement('section');enemyPanel.id='enemy-info';enemyPanel.innerHTML='<span class="eyebrow">PURSUER</span><progress max="75" value="75" aria-label="Enemy health"></progress><p>75 / 75 HP</p>';document.body.append(enemyPanel);
  const damageOverlay=document.createElement('div');damageOverlay.id='damage-flash';document.body.append(damageOverlay);
  const defeat=document.createElement('section');defeat.id='defeat';defeat.hidden=true;defeat.innerHTML='<h2>Defeated</h2><p>The pursuer caught you. Try again.</p><button type="button">Restart</button>';document.body.append(defeat);
+ const pickup=new THREE.Group();pickup.visible=false;scene.add(pickup);
+ const healingMaterial=material(0x6bff9b,0x27a554);
+ box(.65,.25,.65,0,.35,0,healingMaterial,pickup);
+ box(.14,.08,.45,0,.52,0,material(0xffffff),pickup);box(.45,.08,.14,0,.52,0,material(0xffffff),pickup);
+ const healingOverlay=document.createElement('div');healingOverlay.id='healing-flash';document.body.append(healingOverlay);
+ const healingNotice=document.createElement('div');healingNotice.id='healing-notice';healingNotice.setAttribute('role','status');healingNotice.setAttribute('aria-live','polite');document.body.append(healingNotice);
+ let healingTime=0,healedAmount=0;
  let enemyHealth=75,enemyCooldown=0,enemyFlash=0,damageTime=0,pathTimer=0;
  let path:Point[]=[];
  function updateEnemyHealth(){enemyPanel.querySelector('progress')!.value=enemyHealth;enemyPanel.querySelector('p')!.textContent=enemyHealth>0?`${enemyHealth} / 75 HP`:'Enemy defeated';}
- function updatePlayerHealth(){document.querySelector('aside strong')!.innerHTML=`${state.health} <small>/ 100 HP</small>`;document.querySelector<HTMLElement>('aside .health i')!.style.width=`${state.health}%`;document.querySelector('aside p')!.textContent=state.health===0?'Operator defeated':damageTime>0?'Taking damage · −10 HP':'Systems nominal';}
+ function updatePlayerHealth(){document.querySelector('aside strong')!.innerHTML=`${state.health} <small>/ 100 HP</small>`;document.querySelector<HTMLElement>('aside .health i')!.style.width=`${state.health}%`;document.querySelector('aside p')!.textContent=state.health===0?'Operator defeated':damageTime>0?'Taking damage · −10 HP':healingTime>0?`Healed +${healedAmount} HP`:'Systems nominal';}
  function attack(){
   if(document.hidden||state.health===0||cooldown>0)return;
   cooldown=.45;pulseTime=.25;pulse.position.set(player.position.x,.08,player.position.z);
   let enemyHit=false;
-  if(enemyHealth>0&&player.position.distanceTo(enemy.position)<=3){enemyHealth=Math.max(0,enemyHealth-25);enemyFlash=.18;enemyHit=true;updateEnemyHealth();if(enemyHealth===0)enemy.visible=false;}
+  if(enemyHealth>0&&player.position.distanceTo(enemy.position)<=3){enemyHealth=Math.max(0,enemyHealth-25);enemyFlash=.18;enemyHit=true;updateEnemyHealth();if(enemyHealth===0){enemy.visible=false;pickup.position.copy(enemy.position);pickup.visible=true;}}
   if(targetHealth<=0){feedback.textContent=enemyHit?'Enemy hit! −25 HP':'Target respawning…';return;}
   if(player.position.distanceTo(target.position)>3){feedback.textContent=enemyHit?'Enemy hit! −25 HP':'Miss · Move within 3 meters';return;}
   targetHealth=Math.max(0,targetHealth-25);flash=.18;updateHealth();
@@ -80,7 +87,7 @@ function start() {
  const targetBounds={x:target.position.x,z:target.position.z,w:1.1,d:1.1};
  function blocked(x:number,z:number){return obstacles.some(o=>overlapsBox(x,z,o))||(targetHealth>0&&overlapsBox(x,z,targetBounds));}
  defeat.querySelector('button')!.addEventListener('click',()=>{
-  reset();state.health=100;damageTime=0;cooldown=0;flash=0;pulseTime=0;respawn=0;
+  reset();pickup.visible=false;pickup.position.set(0,0,0);healingTime=0;healedAmount=0;healingOverlay.style.opacity='0';healingNotice.textContent='';state.health=100;damageTime=0;cooldown=0;flash=0;pulseTime=0;respawn=0;
   targetHealth=100;target.visible=true;targetMaterial.emissive.setHex(0x55300c);updateHealth();feedback.textContent='Get close · Space or Attack';
   enemyHealth=75;enemy.visible=true;enemy.position.set(12,0,-12);enemy.rotation.y=0;enemyCooldown=0;enemyFlash=0;pathTimer=0;path=[];updateEnemyHealth();
   player.position.set(0,0,0);player.rotation.y=0;camera.position.copy(cameraOffset);look.set(0,0,0);updatePlayerHealth();defeat.hidden=true;attackButton.disabled=false;
@@ -104,7 +111,7 @@ function start() {
    }
   }
  }
- enemyCooldown=Math.max(0,enemyCooldown-dt);enemyFlash=Math.max(0,enemyFlash-dt);damageTime=Math.max(0,damageTime-dt);
+ enemyCooldown=Math.max(0,enemyCooldown-dt);enemyFlash=Math.max(0,enemyFlash-dt);damageTime=Math.max(0,damageTime-dt);healingTime=Math.max(0,healingTime-dt);
  enemyMaterial.emissive.setHex(enemyFlash>0?0xffffff:0x5c1320);damageOverlay.style.opacity=String(damageTime/.35);updatePlayerHealth();
  if(enemyHealth>0&&state.health>0&&dt>0){
   const distance=enemy.position.distanceTo(player.position);
@@ -124,6 +131,12 @@ function start() {
  const input=new THREE.Vector2(Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'))+touch.x,Number(keys.has('KeyS')||keys.has('ArrowDown'))-Number(keys.has('KeyW')||keys.has('ArrowUp'))+touch.y);if(state.health===0)input.set(0,0);if(input.length()>1)input.normalize();
  // Small steps keep movement from crossing collision surfaces even after a slow frame.
  const steps=Math.max(1,Math.ceil(6*dt/.1));for(let i=0;i<steps;i++){const x=THREE.MathUtils.clamp(player.position.x+input.x*6*dt/steps,-limit,limit);if(!blocked(x,player.position.z))player.position.x=x;const z=THREE.MathUtils.clamp(player.position.z+input.y*6*dt/steps,-limit,limit);if(!blocked(player.position.x,z))player.position.z=z;}
+ if(pickup.visible&&state.health>0&&dt>0&&player.position.distanceTo(pickup.position)<=1){
+  const before=state.health;state.health=Math.min(state.maxHealth,state.health+25);healedAmount=state.health-before;
+  pickup.visible=false;healingTime=1.5;damageTime=0;damageOverlay.style.opacity='0';
+  healingNotice.textContent=healedAmount>0?`+${healedAmount} HP · Health pickup collected`:'Health full · Pickup collected';updatePlayerHealth();
+ }
+ healingOverlay.style.opacity=String(Math.min(healingTime/.35,1)*.6);healingNotice.style.opacity=healingTime>0?'1':'0';
  if(input.lengthSq()>.001){const target=Math.atan2(-input.x,-input.y);player.rotation.y+=Math.atan2(Math.sin(target-player.rotation.y),Math.cos(target-player.rotation.y))*(1-Math.exp(-14*dt));}body.position.y=1+(input.lengthSq()>.01?Math.sin(now*.015)*.04:0);
  camera.position.lerp(player.position.clone().add(cameraOffset),1-Math.exp(-5*dt));look.lerp(player.position,1-Math.exp(-7*dt));camera.lookAt(look);renderer.render(scene,camera);requestAnimationFrame(frame);
  }requestAnimationFrame(frame);
