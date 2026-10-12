@@ -1,4 +1,4 @@
-# titanfall-arena — Milestone 4
+# titanfall-arena — Milestone 5
 Original sci-fi action RPG enemy encounter prototype. TypeScript, Vite and Three.js.
 
 ## Run locally
@@ -35,10 +35,24 @@ Production output is `dist/`. Relative asset paths support a future GitHub Pages
 Health is a fixed prototype value; multiplayer, bosses and PvP are outside this milestone. A WebGL-capable browser is required.
 
 ## Milestone 4 encounter
-One pursuer navigates around obstacles and the living training target using a clearance-tested grid path. It moves at 2.6 meters/second and deals 10 damage within 1.6 meters every 1.2 seconds. Your attack also deals 25 damage to the enemy within 3 meters (75 enemy HP). Player damage flashes red. At zero HP, movement and combat stop; Restart resets player, enemy, target, camera, inputs, health and timers. The defeated enemy stays down until Restart or page reload. Hidden tabs pause the encounter.
+One pursuer navigates around obstacles and the living training target using a clearance-tested grid path. It moves at 2.6 meters/second and deals 10 damage within 1.6 meters every 1.2 seconds. Your attack also deals 25 damage to the enemy within 3 meters (75 enemy HP). Player damage flashes red. At zero HP, movement and combat stop; Restart resets player, enemy, target, camera, inputs, health and timers. Defeated enemies stay down; clearing a wave starts the next wave after four seconds. Hidden tabs pause the encounter.
 
 ### Health pickup (v0.3.1)
 The defeated enemy drops one green medical pickup. Walk within 1 meter to restore 25 HP, capped at 100; green feedback shows the actual amount healed. Collection removes it, including at full health. Restart clears the pickup and healing feedback.
 
 ## Hunter (v0.4.0)
 Q / Cloak activates 6 seconds of invisibility, healing 5 HP/second up to 100. The 15-second cooldown starts on activation. Enemy pursuit and attacks stop while invisible. Space / Attack ends cloak and healing. Hold E / Revive within 2 meters of the blue downed NPC ally for 3 seconds while cloaked. Releasing, damage, attacking, leaving range or cloak expiration clears revival progress; press/hold again to retry. Restart resets cloak, timers, ally and progress. No multiplayer is included.
+
+## Milestone 5 — v0.5.0
+Three waves: (1) Pursuer + Runner, (2) Pursuer + Runner + Armored, (3) Pursuer + two Runners + two Armored. Four seconds between waves; health and Hunter cooldown carry forward. Every defeated enemy drops a 25 HP pickup. Clear wave 3 for Victory; Restart resets enemies, waves, health, pickups, training target, NPC ally and abilities.
+
+| Type | HP | Speed (m/s) | Damage | Attack cooldown |
+|---|---:|---:|---:|---:|
+| Pursuer (red) | 75 | 2.6 | 10 | 1.2s |
+| Runner (purple) | 50 | 4 | 8 | 0.9s |
+| Armored (gold) | 150 | 1.6 | 18 | 1.8s |
+
+Original procedural placeholder graphics distinguish the three types. Spawns remain inside the arena, outside obstacle/target collision, at least 8 meters from the player and 3 meters from other living enemies and the ally. If no safe spawn exists, spawning waits.
+
+### Device priorities and unresolved issues
+Desktop and iPad landscape are the priority layouts. Real-device iPad verification is still required. iPhone layout remains too cramped for practical play. Mobile double-tap zoom interference and recovering zoom after zooming in remain unresolved; this release preserves the existing touch-action rules and does not claim those issues are fixed.

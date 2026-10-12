@@ -8,6 +8,10 @@
 
 #ability,#revive{position:fixed;right:28px;padding:12px;border:1px solid #86b8ff;border-radius:8px;background:#183357ed;color:white;font-weight:700;touch-action:none;user-select:none}#ability{bottom:200px}#revive{bottom:255px}#ability:disabled,#revive:disabled{opacity:.5}#hunter-hud{position:fixed;left:28px;top:215px;width:190px;padding:12px;background:#0b1826dc;border:1px solid #86b8ff;pointer-events:none}#hunter-hud p,#hunter-hud label{font-size:11px;display:block}#hunter-hud progress{width:100%;accent-color:#86b8ff}@media(max-width:600px){#hunter-hud{left:16px;top:205px;width:145px;padding:8px}#ability,#revive{right:20px;padding:10px}#ability{bottom:185px}#revive{bottom:235px}}
 
-/* Disable double-tap zoom while preserving pinch zoom. Pointer-driven controls keep touch-action:none above. */
+/* The arena uses touch exclusively for gameplay, including rapid repeated attacks. */
+html,body,#app,canvas,button{touch-action:none;}
+/* Disable double-tap zoom while preserving pinch zoom. */
 html,body,#app,canvas,button{touch-action:manipulation;}
 #joystick,#revive{touch-action:none;}
+
+#enemy-info{width:190px}#enemy-info p{line-height:1.5}#hunter-hud{top:280px}#victory{position:fixed;inset:0;z-index:10;background:#080e18ed;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center}#victory[hidden]{display:none}#victory h2{font-size:40px;color:#6bff9b}#victory button{padding:16px 40px;font-size:18px;background:#60e5e2;border:0;border-radius:6px;touch-action:manipulation}@media(min-width:900px) and (orientation:landscape){#enemy-info{left:245px;top:24px;width:300px}#hunter-hud{left:28px;top:130px}#revive{bottom:260px}#ability{bottom:205px}}
