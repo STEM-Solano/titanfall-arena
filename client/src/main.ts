@@ -26,6 +26,32 @@ function start() {
  const body=box(.7,.9,.55,0,1,0,material(0xe7eeee),player);box(.82,.28,.64,0,1.4,0,dark,player);box(.5,.45,.48,0,1.8,0,dark,player);box(.42,.12,.03,0,1.84,-.255,glow,player);
  box(.22,.55,.27,-.23,.3,0,dark,player);box(.22,.55,.27,.23,.3,0,dark,player);box(.22,.65,.3,-.5,1,0,orange,player);box(.22,.65,.3,.5,1,0,orange,player);
  const halo=new THREE.Mesh(new THREE.RingGeometry(.65,.72,40),new THREE.MeshBasicMaterial({color:0x66eed8,side:THREE.DoubleSide}));halo.rotation.x=-Math.PI/2;halo.position.y=.03;player.add(halo);
+ // Training combat stays local and independent of movement input.
+ const targetMaterial=material(0xffb45c,0x55300c);
+ const target=new THREE.Group();target.position.set(0,0,-3);scene.add(target);
+ box(1.1,1.6,1.1,0,.9,0,targetMaterial,target);
+ box(.65,.4,.65,0,1.9,0,targetMaterial,target);
+ const panel=document.createElement('section');panel.id='training';
+ panel.innerHTML='<span class="eyebrow">TRAINING TARGET</span><label for="target-health">100 / 100 HP</label><progress id="target-health" max="100" value="100"></progress><p role="status" aria-live="polite">Get close · Space or Attack</p>';
+ document.body.append(panel);
+ const healthBar=panel.querySelector('progress')!;
+ const healthLabel=panel.querySelector('label')!;
+ const feedback=panel.querySelector('p')!;
+ const attackButton=document.createElement('button');attackButton.id='attack';attackButton.type='button';attackButton.textContent='Attack';document.body.append(attackButton);
+ const pulse=new THREE.Mesh(new THREE.RingGeometry(.4,.6,48),new THREE.MeshBasicMaterial({color:0x9ffff1,transparent:true,opacity:0,side:THREE.DoubleSide}));pulse.rotation.x=-Math.PI/2;pulse.position.y=.08;scene.add(pulse);
+ let targetHealth=100,cooldown=0,flash=0,respawn=0,pulseTime=0;
+ function updateHealth(){healthBar.value=targetHealth;healthLabel.textContent=`${targetHealth} / 100 HP`;}
+ function attack(){
+  if(document.hidden||cooldown>0)return;
+  cooldown=.45;pulseTime=.25;pulse.position.set(player.position.x,.08,player.position.z);
+  if(targetHealth<=0){feedback.textContent='Target respawning…';return;}
+  if(player.position.distanceTo(target.position)>3){feedback.textContent='Miss · Move within 3 meters';return;}
+  targetHealth=Math.max(0,targetHealth-25);flash=.18;updateHealth();
+  feedback.textContent=targetHealth===0?'Target defeated · Respawn in 3 seconds':'Hit! −25 HP';
+  if(targetHealth===0){target.visible=false;respawn=3;}
+ }
+ window.addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();if(!e.repeat)attack();}});
+ attackButton.addEventListener('click',attack);
  const keys=new Set<string>();const accepted=['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowLeft','ArrowDown','ArrowRight'];
  window.addEventListener('keydown',e=>{if(accepted.includes(e.code)){e.preventDefault();keys.add(e.code);}});window.addEventListener('keyup',e=>keys.delete(e.code));
  const pad=document.querySelector<HTMLDivElement>('#joystick')!,stick=document.querySelector<HTMLDivElement>('#stick')!;let pointer:number|null=null;const touch=new THREE.Vector2();
@@ -38,6 +64,11 @@ function start() {
  function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}window.addEventListener('resize',resize);resize();
  renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();fail('Graphics context lost. Reload to resume.');});
  let previous=performance.now();function frame(now:number){const dt=Math.min((now-previous)/1000,.05);previous=now;
+ cooldown=Math.max(0,cooldown-dt);flash=Math.max(0,flash-dt);pulseTime=Math.max(0,pulseTime-dt);
+ attackButton.disabled=cooldown>0;
+ targetMaterial.emissive.setHex(flash>0?0xffffff:0x55300c);
+ pulse.scale.setScalar(1+(1-pulseTime/.25)*4);pulse.material.opacity=pulseTime/.25*.65;
+ if(respawn>0){respawn=Math.max(0,respawn-dt);if(respawn===0){targetHealth=100;target.visible=true;updateHealth();feedback.textContent='Target ready · Get close and attack';}}
  const input=new THREE.Vector2(Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'))+touch.x,Number(keys.has('KeyS')||keys.has('ArrowDown'))-Number(keys.has('KeyW')||keys.has('ArrowUp'))+touch.y);if(input.length()>1)input.normalize();
  // Small steps keep movement from crossing collision surfaces even after a slow frame.
  const steps=Math.max(1,Math.ceil(6*dt/.1));for(let i=0;i<steps;i++){const x=THREE.MathUtils.clamp(player.position.x+input.x*6*dt/steps,-limit,limit);if(!blocked(x,player.position.z))player.position.x=x;const z=THREE.MathUtils.clamp(player.position.z+input.y*6*dt/steps,-limit,limit);if(!blocked(player.position.x,z))player.position.z=z;}
