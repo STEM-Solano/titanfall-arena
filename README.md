@@ -1,5 +1,5 @@
-# titanfall-arena — Milestone 2
-Original sci-fi action RPG training combat prototype. TypeScript, Vite and Three.js.
+# titanfall-arena — Milestone 3
+Original sci-fi action RPG enemy encounter prototype. TypeScript, Vite and Three.js.
 
 ## Run locally
 Requires Node.js 22.12+ (or 20.19+) and npm.
@@ -33,3 +33,6 @@ Production output is `dist/`. Relative asset paths support a future GitHub Pages
 - `assets/`: documentation for original procedural assets.
 
 Health is a fixed prototype value; multiplayer, bosses and PvP are outside this milestone. A WebGL-capable browser is required.
+
+## Milestone 3 encounter
+One pursuer navigates around obstacles and the living training target using a clearance-tested grid path. It moves at 2.6 meters/second and deals 10 damage within 1.6 meters every 1.2 seconds. Your attack also deals 25 damage to the enemy within 3 meters (75 enemy HP). Player damage flashes red. At zero HP, movement and combat stop; Restart resets player, enemy, target, camera, inputs, health and timers. The defeated enemy stays down until Restart or page reload. Hidden tabs pause the encounter.
