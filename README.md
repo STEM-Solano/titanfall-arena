@@ -1,4 +1,4 @@
-# titanfall-arena — Milestone 5
+# titanfall-arena — Milestone 6
 Original sci-fi action RPG enemy encounter prototype. TypeScript, Vite and Three.js.
 
 ## Run locally
@@ -56,3 +56,9 @@ Original procedural placeholder graphics distinguish the three types. Spawns rem
 
 ### Device priorities and unresolved issues
 Desktop and iPad landscape are the priority layouts. Real-device iPad verification is still required. iPhone layout remains too cramped for practical play. Mobile double-tap zoom interference and recovering zoom after zooming in remain unresolved; this release preserves the existing touch-action rules and does not claim those issues are fixed.
+
+## Milestone 6 — v0.6.0 progression
+Pursuer awards 30 XP, Runner 25 XP, Armored 60 XP. Training target awards none. Level 2 requires 100 XP; level 3 requires another 150 XP; subsequent thresholds increase by 50. All waves total 370 XP, yielding two upgrades. XP overflow carries forward.
+
+Each level pauses gameplay, wave transitions, healing, cooldowns and enemy attacks. Choose with keys 1/2/3, Tab plus Enter/Space, mouse click or touch. Exact current-to-new effects appear before selection: attack +10 damage; maximum health +25 and current health +25; invisibility cooldown −3 seconds, minimum 6 seconds. Cooldown is measured from activation; a cooldown upgrade also caps the currently remaining cooldown at the new duration. Choices stack. Restart resets XP, level and upgrades. No save persists beyond the current run.
+Desktop and iPad landscape remain priorities; the iPhone layout and mobile zoom problems documented above remain unresolved.
