@@ -82,3 +82,7 @@ The live backend URL is prefilled. Rejected joins keep the connection open and s
 
 ### v0.9.2 host survival fix
 When the host is downed, host control passes to the last living connected teammate in join order. Downed players remain in the room and can be revived; their camera spectates the surviving host. Host disconnect uses the same last-survivor preference. Revival does not steal host control back. If all players are downed, show team defeat while keeping everyone connected; only an explicit host reset returns the team to the lobby. Backend restarts/network failures remain separate disconnect events.
+
+### v0.9.3 connection and movement reliability
+Cached navigation replaces repeated per-enemy grid rebuilding/sorting. Co-op rendering buffers 120 ms of authoritative snapshots and does not extrapolate through cover or rewind on late packets. New enemies appear at their real spawn coordinates.
+Brief disconnects retain a player slot for 60 seconds and reconnect automatically using a memory-only resume token. Health, XP, room and match state remain on the server; host control passes to connected survivors. The last game view stays visible with a diagnostic connection overlay instead of silently returning to the lobby. A backend restart still loses in-memory rooms; the overlay explains that the room cannot be restored and offers an explicit Return to lobby. Health checks include tick timing diagnostics. These changes do not guarantee real-device latency or hosting uptime; retest with two devices.

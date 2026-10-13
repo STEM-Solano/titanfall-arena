@@ -1,0 +1,14 @@
+import type {Point} from '../../client/src/navigation';
+// Cache obstacle topology and reverse distance fields, rather than sorting 1,369
+// cells and searching the same goal separately for every enemy.
+export class Navigator{
+ private topologies=new Map<number,{valid:Uint8Array;edges:number[][]}>();
+ private fields=new Map<string,Int16Array>();
+ constructor(private blocked:(x:number,z:number,r:number)=>boolean){}
+ invalidate(){this.topologies.clear();this.fields.clear();}
+ private point(i:number):Point{return {x:Math.floor(i/37)-18,z:i%37-18};}
+ private clear(a:Point,b:Point,r:number){const n=Math.max(1,Math.ceil(Math.hypot(b.x-a.x,b.z-a.z)/.15));for(let i=0;i<=n;i++)if(this.blocked(a.x+(b.x-a.x)*i/n,a.z+(b.z-a.z)*i/n,r))return false;return true;}
+ private topology(r:number){let t=this.topologies.get(r);if(t)return t;const valid=new Uint8Array(1369),edges=Array.from({length:1369},()=>[] as number[]);for(let i=0;i<1369;i++){const p=this.point(i);valid[i]=this.blocked(p.x,p.z,r)?0:1;}for(let i=0;i<1369;i++)if(valid[i]){const p=this.point(i);for(const d of [-37,37,-1,1]){const j=i+d;if(j<0||j>=1369||!valid[j])continue;const q=this.point(j);if(Math.abs(q.x-p.x)+Math.abs(q.z-p.z)!==1)continue;if(this.clear(p,q,r))edges[i].push(j);}}t={valid,edges};this.topologies.set(r,t);return t;}
+ private nearest(p:Point,r:number,requireClear:boolean,valid:Uint8Array){let best=-1,dist=Infinity;const consider=(i:number)=>{if(i<0||i>=1369||!valid[i])return;const q=this.point(i),d=(q.x-p.x)**2+(q.z-p.z)**2;if(d<dist&&(!requireClear||this.clear(p,q,r))){best=i;dist=d;}};const x=Math.max(-18,Math.min(18,Math.round(p.x))),z=Math.max(-18,Math.min(18,Math.round(p.z)));for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++){if(x+dx>=-18&&x+dx<=18&&z+dz>=-18&&z+dz<=18)consider((x+dx+18)*37+z+dz+18);}if(best===-1)for(let i=0;i<1369;i++)consider(i);return best;}
+ path(start:Point,goal:Point,r:number):Point[]{if(this.clear(start,goal,r))return [{...goal}];const {valid,edges}=this.topology(r),first=this.nearest(start,r,true,valid),last=this.nearest(goal,r,false,valid);if(first<0||last<0)return [];const key=r+':'+last;let distances=this.fields.get(key);if(!distances){distances=new Int16Array(1369).fill(-1);const queue=new Int16Array(1369);queue[0]=last;distances[last]=0;let head=0,tail=1;while(head<tail){const i=queue[head++];for(const j of edges[i])if(distances[j]===-1){distances[j]=distances[i]+1;queue[tail++]=j;}}if(this.fields.size>=128)this.fields.delete(this.fields.keys().next().value!);this.fields.set(key,distances);}if(distances[first]<0)return [];const result=[this.point(first)];let i=first;while(i!==last){const next=edges[i].find(j=>distances![j]===distances![i]-1);if(next===undefined)return [];i=next;result.push(this.point(i));}if(this.clear(this.point(last),goal,r))result.push({...goal});return result;}
+}

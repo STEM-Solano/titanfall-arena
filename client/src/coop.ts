@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import './coop.css';
+import {SnapshotBuffer} from './snapshot-buffer';
 import {arenaObstacles,PROTOCOL,type Snapshot,type ClientMessage,type ServerMessage} from '../../shared/multiplayer';
 import {enemyTypes} from './waves';
 const $=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T;
 let socket:WebSocket|null=null,myId='',snapshot:Snapshot|null=null,connecting=false;
+let resumeToken='',connectionLost=false,allowReconnect=true,reconnectAttempt=0,reconnectSince=0;let reconnectTimer:ReturnType<typeof setTimeout>|null=null;const buffer=new SnapshotBuffer();
 let mouseActive=false,mouse=new THREE.Vector2(),aim=new THREE.Vector2(0,-1),move=new THREE.Vector2(),revive=false;
 const keys=new Set<string>();
 const urlInput=$<HTMLInputElement>('co-url');
@@ -13,47 +15,54 @@ const me=()=>snapshot?.players.find(p=>p.id===myId);
 function status(text:string){$('co-status').textContent=text;}
 function neutral(){keys.clear();move.set(0,0);revive=false;document.querySelectorAll<HTMLElement>('.co-pad i').forEach(e=>e.style.transform='');}
 function endpoint(){const raw=urlInput.value.trim();if(!raw)throw Error('Deploy the backend first, then enter its HTTPS URL.');const u=new URL(raw);if(u.protocol==='https:')u.protocol='wss:';else if(u.protocol==='http:')u.protocol='ws:';if(!['wss:','ws:'].includes(u.protocol)||u.username||u.password||u.search||u.hash)throw Error('Use an HTTPS or WSS backend URL without credentials or query parameters.');if(location.protocol==='https:'&&u.protocol!=='wss:')throw Error('GitHub Pages requires a secure WSS backend. Use local HTTP client for LAN testing.');u.pathname='/ws';return u.toString();}
+function showConnection(message:string){const panel=$('co-connection');panel.hidden=false;panel.querySelector('p')!.textContent=message;}
+function openConnection(url:string,request:ClientMessage,isResume=false){
+ connecting=true;socket=new WebSocket(url);const active=socket;let closeReason='';
+ const timeout=window.setTimeout(()=>{if(active.readyState===WebSocket.CONNECTING){closeReason='Backend connection timed out.';active.close();}},20000);
+ active.onopen=()=>{clearTimeout(timeout);connecting=false;try{localStorage.setItem('titanfall-coop-endpoint',urlInput.value.trim());}catch{}send(request);};
+ active.onmessage=e=>{if(socket!==active)return;let m:ServerMessage;try{m=JSON.parse(String(e.data)) as ServerMessage;}catch{closeReason='Invalid server message.';active.close();return;}
+  if(m.type==='welcome'){
+   // The temporary handshake ID must not replace the retained player ID.
+   if(!isResume||m.id===myId){myId=m.id;resumeToken=m.resumeToken??resumeToken;}
+   if(m.protocol!==PROTOCOL){allowReconnect=false;closeReason='Protocol mismatch. Refresh both devices.';active.close();}
+  }else if(m.type==='error'){
+   if(isResume){allowReconnect=false;closeReason=m.message;showConnection(m.message+' Your last view is preserved; use Return to lobby to create a fresh room.');active.close();}
+   else{connecting=false;updateUI();status(m.message+(m.message.includes('already started')?' Join before the host starts; ask for a fresh lobby.':m.message.includes('not found')?' Ask the host for a new room code.':''));}
+  }else if(m.type==='snapshot'){
+   snapshot=m;buffer.push(m,performance.now());connectionLost=false;reconnectAttempt=0;reconnectSince=0;$('co-connection').hidden=true;
+   // A UI failure must never close a healthy game connection.
+   try{updateUI();}catch(err){showConnection('Display update error: '+(err instanceof Error?err.message:String(err))+'. The server connection remains open.');console.error(err);}
+  }
+ };
+ active.onerror=()=>{closeReason='Backend connection failed.';};
+ active.onclose=e=>{clearTimeout(timeout);if(socket!==active)return;socket=null;connecting=false;neutral();const detail=closeReason||`Connection closed (code ${e.code}${e.reason?': '+e.reason:''}).`;
+  if(snapshot){connectionLost=true;showConnection(detail+' Reconnecting to your reserved slot…');if(allowReconnect&&resumeToken){if(!reconnectSince)reconnectSince=Date.now();if(Date.now()-reconnectSince<55000){const delay=Math.min(5000,500*2**reconnectAttempt++);reconnectTimer=setTimeout(()=>{try{openConnection(url,{type:'resume',id:myId,token:resumeToken,code:snapshot!.code},true);}catch{showConnection('Reconnect failed. Use Return to lobby.');}},delay);return;}}showConnection(detail+' Could not restore the room. Use Return to lobby.');
+  }else{myId='';resumeToken='';updateUI();status(detail+' Check the backend URL and try again.');}
+ };
+}
 function connect(type:'create'|'join'){
- if(connecting||snapshot)return;
- try{
-  const url=endpoint(),name=$<HTMLInputElement>('co-name').value.trim(),code=$<HTMLInputElement>('co-code').value.trim().toUpperCase();
-  if(!name)throw Error('Enter a player name.');
-  if(type==='join'&&!/^[A-F0-9]{6}$/.test(code))throw Error('Enter the six-character room code shown on Player 1’s lobby.');
-  const request:ClientMessage=type==='create'?{type,name,protocol:PROTOCOL}:{type,name,code,protocol:PROTOCOL};
-  // A rejected join is recoverable. Keep the socket and allow another request.
-  if(socket?.readyState===WebSocket.OPEN&&socket.url===url){status('Joining room…');send(request);return;}
-  if(socket){socket.onclose=null;socket.close();socket=null;}
-  connecting=true;status('Connecting… A free backend may need about a minute to wake.');updateUI();socket=new WebSocket(url);const active=socket;let closeReason='';
-  const timeout=window.setTimeout(()=>{if(active.readyState===WebSocket.CONNECTING){closeReason='Connection timed out. Open the backend /health URL, then try again.';active.close();}},75000);
-  active.onopen=()=>{clearTimeout(timeout);connecting=false;try{localStorage.setItem('titanfall-coop-endpoint',urlInput.value.trim());}catch{/* Endpoint storage is optional. */}updateUI();send(request);};
-  active.onmessage=e=>{if(socket!==active)return;try{
-   const m=JSON.parse(String(e.data)) as ServerMessage;
-   if(m.type==='welcome'){myId=m.id;if(m.protocol!==PROTOCOL){closeReason='Server version differs. Refresh the client and deploy a protocol 9 backend.';active.close();}}
-   else if(m.type==='error'){
-    connecting=false;updateUI();
-    const hint=m.message.includes('already started')?' Player 1 must return to the lobby after the match or create a new room. Join before the host starts.':m.message.includes('not found')?' Ask Player 1 to create a fresh room and copy its new code; old rooms disappear when the backend restarts.':'';
-    status(m.message+hint);
-   }else if(m.type==='snapshot'){snapshot=m;updateUI();}
-  }catch{closeReason='Invalid server response. Check that the URL points to the multiplayer backend.';active.close();}};
-  active.onerror=()=>{closeReason='Backend connection failed. Check the URL, deployment status and allowed origin.';status(closeReason);};
-  active.onclose=e=>{clearTimeout(timeout);if(socket!==active)return;connecting=false;neutral();snapshot=null;myId='';socket=null;updateUI();status(closeReason||`Disconnected${e.reason?': '+e.reason:''}. Ask the host for a fresh lobby code and join again.`);};
+ if(connecting||snapshot)return;try{const url=endpoint(),name=$<HTMLInputElement>('co-name').value.trim(),code=$<HTMLInputElement>('co-code').value.trim().toUpperCase();if(!name)throw Error('Enter a player name.');if(type==='join'&&!/^[A-F0-9]{6}$/.test(code))throw Error('Enter the host’s six-character room code.');
+ const request:ClientMessage=type==='create'?{type,name,protocol:PROTOCOL}:{type,name,code,protocol:PROTOCOL};allowReconnect=true;connectionLost=false;
+ if(socket?.readyState===WebSocket.OPEN&&socket.url===url){send(request);return;}
+ if(socket){socket.onclose=null;socket.close();}status('Connecting…');openConnection(url,request);updateUI();
  }catch(e){connecting=false;updateUI();status(e instanceof Error?e.message:'Connection failed');}
 }
-function leave(){send({type:'leave'});socket?.close();snapshot=null;neutral();updateUI();}
+function leave(){allowReconnect=false;if(reconnectTimer)clearTimeout(reconnectTimer);reconnectTimer=null;send({type:'leave'});if(socket){socket.onclose=null;socket.close();}socket=null;snapshot=null;myId='';resumeToken='';connecting=false;connectionLost=false;neutral();buffer.clear();$('co-connection').hidden=true;updateUI();status('Left room. Create or join a lobby.');}
+$('co-connection-leave').addEventListener('click',leave);
 $('co-create').addEventListener('click',()=>connect('create'));$('co-join').addEventListener('click',()=>connect('join'));$('co-leave').addEventListener('click',leave);$('co-exit').addEventListener('click',leave);$('co-result-leave').addEventListener('click',leave);
 $('co-ready').addEventListener('click',()=>send({type:'ready',ready:!me()?.ready}));$('co-start').addEventListener('click',()=>send({type:'start'}));$('co-restart').addEventListener('click',()=>send({type:'restart'}));
 const choices=['damage','health','cloak'] as const;
 choices.forEach(kind=>document.querySelector(`[data-choice="${kind}"]`)!.addEventListener('click',()=>send({type:'upgrade',upgrade:kind})));
-function action(action:'melee'|'fire'|'cloak'){if(snapshot?.phase==='playing'&&me()&&!me()!.downed&&!me()!.pending)send({type:'action',action});}
+function action(action:'melee'|'fire'|'cloak'){if(!connectionLost&&snapshot?.phase==='playing'&&me()&&!me()!.downed&&!me()!.pending)send({type:'action',action});}
 $('co-melee').addEventListener('click',()=>action('melee'));$('co-fire').addEventListener('click',()=>action('fire'));$('co-cloak').addEventListener('click',()=>action('cloak'));
 function updateUI(){const p=me(),playing=snapshot?.phase==='playing',lobby=snapshot?.phase==='lobby',finished=snapshot?.phase==='victory'||snapshot?.phase==='defeat';$('co-lobby').hidden=!!playing||!!finished;$('co-hud').hidden=!playing;$('co-result').hidden=!finished;$('co-controls').hidden=!playing;document.querySelectorAll<HTMLElement>('.co-pad').forEach(e=>e.hidden=!playing);
  for(const id of ['co-ready','co-leave'])$(id).hidden=!lobby;$('co-start').hidden=!lobby||snapshot?.host!==myId;
  $<HTMLButtonElement>('co-create').disabled=connecting||!!snapshot;$<HTMLButtonElement>('co-join').disabled=connecting||!!snapshot;
- const roster=$('co-roster');roster.replaceChildren();if(snapshot){const title=document.createElement('h2');title.textContent=`Room ${snapshot.code} · ${snapshot.players.length}/6`;roster.append(title);for(const other of snapshot.players){const line=document.createElement('p');line.textContent=`${other.name}${other.id===snapshot.host?' (host)':''} · ${other.ready?'Ready':'Not ready'}`;roster.append(line);}status(snapshot.notice);}
+ const roster=$('co-roster');if(lobby||!snapshot)roster.replaceChildren();if(snapshot&&lobby){const title=document.createElement('h2');title.textContent=`Room ${snapshot.code} · ${snapshot.players.length}/6`;roster.append(title);for(const other of snapshot.players){const line=document.createElement('p');line.textContent=`${other.name}${other.id===snapshot.host?' (host)':''} · ${!other.connected?'Reconnecting':other.ready?'Ready':'Not ready'}`;roster.append(line);}status(snapshot.notice);}
  $('co-ready').textContent=p?.ready?'Unready':'Ready';$<HTMLButtonElement>('co-start').disabled=!snapshot||snapshot.players.length<2||snapshot.players.some(p=>!p.ready);
  const upgrade=$('co-upgrades');const wasHidden=upgrade.hidden;upgrade.hidden=!playing||!p?.pending;if(p){document.querySelector('[data-choice="damage"]')!.textContent=`1. Attack ${p.damage} → ${p.damage+10}`;document.querySelector('[data-choice="health"]')!.textContent=`2. Max HP ${p.maxHealth} → ${p.maxHealth+25}; +25 current HP if alive`;document.querySelector('[data-choice="cloak"]')!.textContent=`3. Cloak cooldown ${p.cooldownDuration}s → ${Math.max(6,p.cooldownDuration-3)}s`;if(wasHidden&&!upgrade.hidden)(upgrade.querySelector('button') as HTMLButtonElement).focus();}
  if(!snapshot||!p)return;$('co-hud').querySelector('h2')!.textContent=`Room ${snapshot.code} · Wave ${snapshot.wave}/3${snapshot.waveDelay>0?' · Next in '+Math.ceil(snapshot.waveDelay)+'s':''} · Host: ${snapshot.players.find(o=>o.id===snapshot!.host)?.name??'none'}`;$('co-health').textContent=`${p.name}: ${Math.ceil(p.health)} / ${p.maxHealth} HP${p.downed?' · DOWNED — spectating survivors; still available for revival':''}${p.hit>0?' · Taking damage':''}${p.healed>0?' · Healing':''}`;$<HTMLProgressElement>('co-hp').value=p.health;$<HTMLProgressElement>('co-hp').max=p.maxHealth;$('co-ability').textContent=p.cloak>0?`Cloaked ${p.cloak.toFixed(1)}s · Heal 5 HP/s`:`Cloak ${p.cloakCooldown>0?'cooldown '+p.cloakCooldown.toFixed(1)+'s':'ready'} · Fire ${p.fireCooldown.toFixed(1)}s`;$('co-revive-progress').textContent=p.reviveTarget?`Reviving ${p.reviveTarget==='npc'?'NPC ally':snapshot.players.find(o=>o.id===p.reviveTarget)?.name??'teammate'} · ${(p.reviveProgress/3*100).toFixed(0)}%`:'Hold E / Revive nearby while cloaked';$('co-xp').textContent=`Level ${p.level} · ${p.xp}/${p.threshold} XP · Damage ${p.damage}`;$<HTMLProgressElement>('co-xp-bar').value=p.xp;$<HTMLProgressElement>('co-xp-bar').max=p.threshold;
- $('co-party').textContent=snapshot.players.filter(o=>o.id!==myId).map(o=>`${o.name}: ${o.downed?'DOWNED':Math.ceil(o.health)+' HP'}${o.cloak>0?' (cloaked)':''}`).join(' · ');$('co-enemies').textContent=snapshot.enemies.map(e=>`${enemyTypes[e.kind].name} ${e.health} HP`).join(' · ')||'Enemies cleared';$('co-notice').textContent=snapshot.notice;
+ $('co-party').textContent=snapshot.players.filter(o=>o.id!==myId).map(o=>`${o.name}: ${!o.connected?'RECONNECTING':o.downed?'DOWNED':Math.ceil(o.health)+' HP'}${o.cloak>0?' (cloaked)':''}`).join(' · ');$('co-enemies').textContent=snapshot.enemies.map(e=>`${enemyTypes[e.kind].name} ${e.health} HP`).join(' · ')||'Enemies cleared';$('co-notice').textContent=snapshot.notice;
  for(const id of ['co-melee','co-fire','co-cloak','co-revive'])$<HTMLButtonElement>(id).disabled=p.downed||p.pending>0;$<HTMLButtonElement>('co-cloak').disabled||=p.cloakCooldown>0;
  $('co-result').querySelector('h2')!.textContent=snapshot.phase==='victory'?'Cooperative Victory':'Team Defeated';$('co-result').querySelector('p')!.textContent=`Wave ${snapshot.wave}/3 · ${Math.floor(snapshot.time)}s · ${snapshot.notice}`;$('co-restart').hidden=snapshot.host!==myId;
  document.body.classList.toggle('co-damaged',p.hit>0);document.body.classList.toggle('co-healed',p.healed>0);
@@ -62,7 +71,7 @@ window.addEventListener('keydown',e=>{if((e.target as HTMLElement)?.matches('inp
 window.addEventListener('keyup',e=>{keys.delete(e.code);if(e.code==='KeyE')revive=false;});window.addEventListener('blur',neutral);document.addEventListener('visibilitychange',()=>{if(document.hidden)neutral();});
 const rb=$('co-revive');rb.addEventListener('pointerdown',e=>{rb.setPointerCapture(e.pointerId);revive=true;});for(const event of ['pointerup','pointercancel','lostpointercapture'])rb.addEventListener(event,()=>revive=false);
 for(const [id,isAim] of [['co-move',false],['co-aim',true]] as const){const pad=$(id);let pointer:number|null=null;const drag=(e:PointerEvent)=>{const r=pad.getBoundingClientRect(),v=new THREE.Vector2((e.clientX-r.left-r.width/2)/38,(e.clientY-r.top-r.height/2)/38);if(v.length()>1)v.normalize();if(isAim){if(v.length()>.15){aim.copy(v).normalize();mouseActive=false;}}else move.copy(v);pad.querySelector<HTMLElement>('i')!.style.transform=`translate(${v.x*38}px,${v.y*38}px)`;};pad.addEventListener('pointerdown',e=>{if(pointer!==null)return;pointer=e.pointerId;pad.setPointerCapture(pointer);drag(e);});pad.addEventListener('pointermove',e=>{if(e.pointerId===pointer)drag(e);});for(const event of ['pointerup','pointercancel','lostpointercapture'])pad.addEventListener(event,()=>{pointer=null;if(!isAim)move.set(0,0);pad.querySelector<HTMLElement>('i')!.style.transform='';});}
-setInterval(()=>{if(snapshot?.phase!=='playing')return;const p=me(),disabled=document.hidden||!p||p.downed||p.pending>0;send({type:'input',input:{x:disabled?0:Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'))+move.x,z:disabled?0:Number(keys.has('KeyS')||keys.has('ArrowDown'))-Number(keys.has('KeyW')||keys.has('ArrowUp'))+move.y,ax:aim.x,az:aim.y,revive:!disabled&&revive}});},50);
+setInterval(()=>{if(snapshot?.phase!=='playing')return;const p=me(),disabled=connectionLost||document.hidden||!p||p.downed||p.pending>0;send({type:'input',input:{x:disabled?0:Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'))+move.x,z:disabled?0:Number(keys.has('KeyS')||keys.has('ArrowDown'))-Number(keys.has('KeyW')||keys.has('ArrowUp'))+move.y,ax:aim.x,az:aim.y,revive:!disabled&&revive}});},50);
 try{renderWorld();}catch(e){status(`WebGL unavailable: ${e instanceof Error?e.message:e}`);}
 function renderWorld(){const scene=new THREE.Scene();scene.background=new THREE.Color(0x080e18);const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));$('co-world').append(renderer.domElement);const camera=new THREE.PerspectiveCamera(48,1,.1,150);scene.add(new THREE.HemisphereLight(0xb9ecff,0x17213b,3));const light=new THREE.DirectionalLight(0xffffff,3);light.position.set(8,20,10);scene.add(light);
  const make=(w:number,h:number,d:number,color:number)=>new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color,roughness:.6}));const floor=make(40,.5,40,0x17283c);floor.position.y=-.25;scene.add(floor,new THREE.GridHelper(40,20,0x407a83,0x284352));for(const o of arenaObstacles){const m=make(o.w,1.8,o.d,0x315061);m.position.set(o.x,.9,o.z);scene.add(m);}for(const sign of [-1,1]){const a=make(40,1.6,.7,0x35616e),b=make(.7,1.6,40,0x35616e);a.position.set(0,.8,sign*20);b.position.set(sign*20,.8,0);scene.add(a,b);}
@@ -70,10 +79,10 @@ function renderWorld(){const scene=new THREE.Scene();scene.background=new THREE.
  const entities=new Map<string,THREE.Group>();const ensure=(id:string,kind:string,color:number)=>{let g=entities.get(id);if(!g){g=new THREE.Group();const body=make(kind==='armored'?1.2:kind==='runner'?.55:.8,kind==='shot'?.2:kind==='pickup'?.25:1.3,kind==='armored'?1.1:.65,color);body.position.y=kind==='pickup'?.35:kind==='shot'?1:.8;g.add(body);if(kind!=='shot'&&kind!=='pickup'){const head=make(.5,.4,.5,color);head.position.y=1.6;g.add(head);}if(kind==='player'){const line=make(.05,.04,2.5,0x8cf5ff);line.position.set(0,.05,-1.5);g.add(line);}scene.add(g);entities.set(id,g);}return g;};
  const raycaster=new THREE.Raycaster(),plane=new THREE.Plane(new THREE.Vector3(0,1,0),0),point=new THREE.Vector3();camera.position.set(0,19,16);camera.lookAt(0,0,0);
  const resize=()=>{renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();};window.addEventListener('resize',resize);resize();renderer.domElement.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'){const r=renderer.domElement.getBoundingClientRect();mouse.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);mouseActive=true;}});renderer.domElement.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'&&e.button===0)action('fire');});
- let previous=performance.now();function frame(now:number){const dt=Math.min(.05,(now-previous)/1000);previous=now;const live=new Set<string>();if(snapshot){for(const p of snapshot.players){const g=ensure(p.id,'player',p.id===myId?0xeeeeee:0x6baeff);live.add(p.id);g.position.lerp(new THREE.Vector3(p.x,0,p.z),1-Math.exp(-22*dt));g.rotation.y=Math.atan2(-p.ax,-p.az);g.scale.y=p.downed?.25:1;for(const child of g.children)if(child instanceof THREE.Mesh){const m=child.material as THREE.MeshStandardMaterial;m.transparent=p.cloak>0;m.opacity=p.cloak>0?.25:1;m.color.setHex(p.hit>0?0xff4b60:p.healed>0?0x6bff9b:p.attackFlash>0?0xffffff:p.id===myId?0xeeeeee:0x6baeff);}}
- for(const e of snapshot.enemies){const g=ensure(e.id,e.kind,enemyTypes[e.kind].color);live.add(e.id);g.position.lerp(new THREE.Vector3(e.x,0,e.z),1-Math.exp(-22*dt));for(const child of g.children)if(child instanceof THREE.Mesh)(child.material as THREE.MeshStandardMaterial).color.setHex(e.hit>0?0xffffff:enemyTypes[e.kind].color);}
- for(const s of snapshot.shots){const g=ensure(s.id,'shot',0x8cf5ff);live.add(s.id);g.position.set(s.x,0,s.z);}for(const p of snapshot.pickups){const g=ensure(p.id,'pickup',0x6bff9b);live.add(p.id);g.position.set(p.x,0,p.z);}
- target.visible=snapshot.target.health>0;target.material.color.setHex(snapshot.target.hit>0?0xffffff:0xffb45c);npc.scale.y=snapshot.npc.downed?1:3;const p=me();if(p){const view=p.downed?(snapshot.players.find(o=>o.id===snapshot!.host&&!o.downed)??snapshot.players.filter(o=>!o.downed).at(-1)??p):p;camera.position.lerp(new THREE.Vector3(view.x,19,view.z+16),1-Math.exp(-5*dt));camera.lookAt(view.x,0,view.z);if(mouseActive){raycaster.setFromCamera(mouse,camera);if(raycaster.ray.intersectPlane(plane,point)){const v=new THREE.Vector2(point.x-p.x,point.z-p.z);if(v.length()>.1)aim.copy(v).normalize();}}}}
+ let previous=performance.now();function frame(now:number){const dt=Math.min(.05,(now-previous)/1000);previous=now;const live=new Set<string>();if(snapshot){for(const p of snapshot.players){const g=ensure(p.id,'player',p.id===myId?0xeeeeee:0x6baeff);live.add(p.id);const pos=buffer.position('players',p.id,now,p);g.position.set(pos.x,0,pos.z);g.rotation.y=Math.atan2(-p.ax,-p.az);g.scale.y=p.downed?.25:1;for(const child of g.children)if(child instanceof THREE.Mesh){const m=child.material as THREE.MeshStandardMaterial;m.transparent=p.cloak>0;m.opacity=p.cloak>0?.25:1;m.color.setHex(p.hit>0?0xff4b60:p.healed>0?0x6bff9b:p.attackFlash>0?0xffffff:p.id===myId?0xeeeeee:0x6baeff);}}
+ for(const e of snapshot.enemies){const g=ensure(e.id,e.kind,enemyTypes[e.kind].color);live.add(e.id);const pos=buffer.position('enemies',e.id,now,e);g.position.set(pos.x,0,pos.z);for(const child of g.children)if(child instanceof THREE.Mesh)(child.material as THREE.MeshStandardMaterial).color.setHex(e.hit>0?0xffffff:enemyTypes[e.kind].color);}
+ for(const s of snapshot.shots){const g=ensure(s.id,'shot',0x8cf5ff);live.add(s.id);const pos=buffer.position('shots',s.id,now,s);g.position.set(pos.x,0,pos.z);}for(const p of snapshot.pickups){const g=ensure(p.id,'pickup',0x6bff9b);live.add(p.id);g.position.set(p.x,0,p.z);}
+ target.visible=snapshot.target.health>0;target.material.color.setHex(snapshot.target.hit>0?0xffffff:0xffb45c);npc.scale.y=snapshot.npc.downed?1:3;const p=me();if(p){const view=p.downed?(snapshot.players.find(o=>o.id===snapshot!.host&&!o.downed)??snapshot.players.filter(o=>!o.downed).at(-1)??p):p;camera.position.lerp(new THREE.Vector3(buffer.position('players',view.id,now,view).x,19,buffer.position('players',view.id,now,view).z+16),1-Math.exp(-5*dt));const look=buffer.position('players',view.id,now,view);camera.lookAt(look.x,0,look.z);if(mouseActive){raycaster.setFromCamera(mouse,camera);if(raycaster.ray.intersectPlane(plane,point)){const v=new THREE.Vector2(point.x-p.x,point.z-p.z);if(v.length()>.1)aim.copy(v).normalize();}}}}
  for(const [id,g] of entities)if(!live.has(id)){scene.remove(g);g.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});entities.delete(id);}renderer.render(scene,camera);requestAnimationFrame(frame);}requestAnimationFrame(frame);
 }
 updateUI();
