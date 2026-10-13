@@ -7,20 +7,37 @@ let socket:WebSocket|null=null,myId='',snapshot:Snapshot|null=null,connecting=fa
 let mouseActive=false,mouse=new THREE.Vector2(),aim=new THREE.Vector2(0,-1),move=new THREE.Vector2(),revive=false;
 const keys=new Set<string>();
 const urlInput=$<HTMLInputElement>('co-url');
-urlInput.value=localStorage.getItem('titanfall-coop-endpoint')??(import.meta as ImportMeta & {env:{VITE_COOP_SERVER?:string}}).env.VITE_COOP_SERVER??'';
+urlInput.value=localStorage.getItem('titanfall-coop-endpoint')??(import.meta as ImportMeta & {env:{VITE_COOP_SERVER?:string}}).env.VITE_COOP_SERVER??'https://titanfall-arena.onrender.com';
 const send=(m:ClientMessage)=>{if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify(m));};
 const me=()=>snapshot?.players.find(p=>p.id===myId);
 function status(text:string){$('co-status').textContent=text;}
 function neutral(){keys.clear();move.set(0,0);revive=false;document.querySelectorAll<HTMLElement>('.co-pad i').forEach(e=>e.style.transform='');}
 function endpoint(){const raw=urlInput.value.trim();if(!raw)throw Error('Deploy the backend first, then enter its HTTPS URL.');const u=new URL(raw);if(u.protocol==='https:')u.protocol='wss:';else if(u.protocol==='http:')u.protocol='ws:';if(!['wss:','ws:'].includes(u.protocol)||u.username||u.password||u.search||u.hash)throw Error('Use an HTTPS or WSS backend URL without credentials or query parameters.');if(location.protocol==='https:'&&u.protocol!=='wss:')throw Error('GitHub Pages requires a secure WSS backend. Use local HTTP client for LAN testing.');u.pathname='/ws';return u.toString();}
 function connect(type:'create'|'join'){
- if(connecting||socket?.readyState===WebSocket.OPEN)return;try{const url=endpoint(),name=$<HTMLInputElement>('co-name').value.trim();if(!name)throw Error('Enter a player name.');connecting=true;status('Connecting… A free backend may need about a minute to wake.');socket=new WebSocket(url);const active=socket;
- const timeout=window.setTimeout(()=>{if(active.readyState===WebSocket.CONNECTING){active.close();status('Connection timed out. Open the backend /health URL, then try again.');}},75000);
- active.onopen=()=>{clearTimeout(timeout);connecting=false;localStorage.setItem('titanfall-coop-endpoint',urlInput.value.trim());send(type==='create'?{type,name,protocol:PROTOCOL}:{type,name,code:$<HTMLInputElement>('co-code').value,protocol:PROTOCOL});};
- active.onmessage=e=>{try{const m=JSON.parse(String(e.data)) as ServerMessage;if(m.type==='welcome'){myId=m.id;if(m.protocol!==PROTOCOL){status('Server version differs. Refresh or deploy matching v0.9.0 backend.');active.close();}}else if(m.type==='error'){status(m.message);if(!snapshot){active.close();}}else if(m.type==='snapshot'){snapshot=m;updateUI();}}catch{status('Invalid server response.');active.close();}};
- active.onerror=()=>status('Backend connection failed. Check the URL, deployment status and allowed origin.');
- active.onclose=()=>{clearTimeout(timeout);connecting=false;neutral();snapshot=null;myId='';if(socket===active)socket=null;updateUI();status('Disconnected. Match state is not resumed automatically. Create or join a new lobby to reconnect.');};
- }catch(e){connecting=false;status(e instanceof Error?e.message:'Connection failed');}
+ if(connecting||snapshot)return;
+ try{
+  const url=endpoint(),name=$<HTMLInputElement>('co-name').value.trim(),code=$<HTMLInputElement>('co-code').value.trim().toUpperCase();
+  if(!name)throw Error('Enter a player name.');
+  if(type==='join'&&!/^[A-F0-9]{6}$/.test(code))throw Error('Enter the six-character room code shown on Player 1’s lobby.');
+  const request:ClientMessage=type==='create'?{type,name,protocol:PROTOCOL}:{type,name,code,protocol:PROTOCOL};
+  // A rejected join is recoverable. Keep the socket and allow another request.
+  if(socket?.readyState===WebSocket.OPEN&&socket.url===url){status('Joining room…');send(request);return;}
+  if(socket){socket.onclose=null;socket.close();socket=null;}
+  connecting=true;status('Connecting… A free backend may need about a minute to wake.');updateUI();socket=new WebSocket(url);const active=socket;let closeReason='';
+  const timeout=window.setTimeout(()=>{if(active.readyState===WebSocket.CONNECTING){closeReason='Connection timed out. Open the backend /health URL, then try again.';active.close();}},75000);
+  active.onopen=()=>{clearTimeout(timeout);connecting=false;try{localStorage.setItem('titanfall-coop-endpoint',urlInput.value.trim());}catch{/* Endpoint storage is optional. */}updateUI();send(request);};
+  active.onmessage=e=>{if(socket!==active)return;try{
+   const m=JSON.parse(String(e.data)) as ServerMessage;
+   if(m.type==='welcome'){myId=m.id;if(m.protocol!==PROTOCOL){closeReason='Server version differs. Refresh the client and deploy a protocol 9 backend.';active.close();}}
+   else if(m.type==='error'){
+    connecting=false;updateUI();
+    const hint=m.message.includes('already started')?' Player 1 must return to the lobby after the match or create a new room. Join before the host starts.':m.message.includes('not found')?' Ask Player 1 to create a fresh room and copy its new code; old rooms disappear when the backend restarts.':'';
+    status(m.message+hint);
+   }else if(m.type==='snapshot'){snapshot=m;updateUI();}
+  }catch{closeReason='Invalid server response. Check that the URL points to the multiplayer backend.';active.close();}};
+  active.onerror=()=>{closeReason='Backend connection failed. Check the URL, deployment status and allowed origin.';status(closeReason);};
+  active.onclose=e=>{clearTimeout(timeout);if(socket!==active)return;connecting=false;neutral();snapshot=null;myId='';socket=null;updateUI();status(closeReason||`Disconnected${e.reason?': '+e.reason:''}. Ask the host for a fresh lobby code and join again.`);};
+ }catch(e){connecting=false;updateUI();status(e instanceof Error?e.message:'Connection failed');}
 }
 function leave(){send({type:'leave'});socket?.close();snapshot=null;neutral();updateUI();}
 $('co-create').addEventListener('click',()=>connect('create'));$('co-join').addEventListener('click',()=>connect('join'));$('co-leave').addEventListener('click',leave);$('co-exit').addEventListener('click',leave);$('co-result-leave').addEventListener('click',leave);

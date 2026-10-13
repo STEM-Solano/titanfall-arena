@@ -76,3 +76,6 @@ Single-player remains at the main page. Use **Co-op Lobby** or `coop.html` for s
 See [server/README.md](server/README.md) for exact backend deployment fields, local setup, co-op rules, disconnect behavior, and staged two-player/six-player acceptance checks. The browser client stays on GitHub Pages and accepts a deployed secure backend URL in the lobby, without rebuilding. No multiplayer accounts, bosses or PvP are added. iPhone layout and zoom issues remain unresolved.
 
 Checks: `npm run check`, `npm test`, `npm run build`, `npm run build:server`. Backend: `npm run start:server`. Client: `npm run dev`. Node 22.12+ required.
+
+### v0.9.1 lobby fix
+The live backend URL is prefilled. Rejected joins keep the connection open and show the server reason, including expired codes and already-started matches. Correct the code and retry Join Room. Join before host start; after a backend redeploy or host leaving an empty room, create a fresh lobby/code. Client patch remains compatible with protocol 9 / backend v0.9.0.
