@@ -1,4 +1,4 @@
-# titanfall-arena — Milestone 7
+# titanfall-arena — Milestone 8
 Original sci-fi action RPG enemy encounter prototype. TypeScript, Vite and Three.js.
 
 ## Run locally
@@ -66,3 +66,6 @@ Desktop and iPad landscape remain priorities; the iPhone layout and mobile zoom 
 ## Milestone 7 — v0.7.0 run flow
 The game opens at a Start Run menu with PC and touch controls. Esc / Pause freezes movement, attacks, healing, enemy AI, wave transitions, cooldowns and the active run clock. Resume preserves the encounter; held input and incomplete revival progress are cleared to avoid unintended actions. Upgrade choices already pause the encounter and must be completed before manual pause. Switching tabs automatically pauses an active encounter.
 Victory and defeat show enemies defeated, level reached, chosen upgrades and active run time (excluding menu, pause and upgrades). Play Again fully resets the encounter and starts wave one. Return to Menu resets the encounter and opens the start screen. Mouse, keyboard and touch buttons are supported. Desktop / iPad landscape remain priorities; iPhone layout and zoom limitations remain unresolved.
+
+## Milestone 8 — v0.8.0 ranged combat
+Aim with the mouse on desktop, then click the arena or press F to fire. On iPad landscape, drag the right AIM joystick and tap Fire; the left joystick still moves. Space / Attack retains melee combat. The ground line shows aiming direction and flashes on firing. Energy shots travel at 22 m/s for 1.5 seconds, deal current upgraded attack damage, and use a separate 0.45-second cooldown shown in the HUD. Cover and living targets stop projectiles; only the nearest hit takes damage. Segment collision prevents tunneling. Firing ends cloak and revival. Projectiles pause with the encounter and clear on Restart/menu reset. Enemy defeats award XP and pickups; the training target awards none. Existing iPhone layout and zoom issues remain unresolved; desktop and iPad landscape are priorities.

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import './style.css';
+import { segmentHit } from './projectiles';
 import { RunFlow } from './run-flow';
 import { Progression, type Upgrade } from './progression';
 import { enemyTypes, waves, safeSpawn, type EnemyKind } from './waves';
@@ -71,7 +72,7 @@ function start() {
  let damageTime=0;
  function updatePlayerHealth(){document.querySelector('aside strong')!.innerHTML=`${Math.ceil(state.health)} <small>/ ${state.maxHealth} HP</small>`;document.querySelector<HTMLElement>('aside .health i')!.style.width=`${state.health/state.maxHealth*100}%`;document.querySelector('aside p')!.textContent=state.health===0?'Operator defeated':damageTime>0?'Taking damage · Find cover':healingTime>0?`Healed +${healedAmount} HP`:hunter.remaining>0?'Invisible · Healing 5 HP/s':'Systems nominal';}
  const flow=new RunFlow();
- const startMenu=document.createElement('section');startMenu.id='start-menu';startMenu.innerHTML='<h2>Titanfall Arena</h2><p>Hunter · Survive three waves</p><div class="controls-guide"><p>Move: WASD / arrow keys / touch joystick</p><p>Attack: Space / Attack · Cloak: Q / Cloak</p><p>Revive: hold E / Revive near the blue ally while cloaked</p><p>Upgrades: 1 / 2 / 3 or select a button</p><p>Pause: Esc / Pause · Desktop and iPad landscape recommended</p></div><button type="button">Start Run</button>';document.body.append(startMenu);
+ const startMenu=document.createElement('section');startMenu.id='start-menu';startMenu.innerHTML='<h2>Titanfall Arena</h2><p>Hunter · Survive three waves</p><div class="controls-guide"><p>Move: WASD / arrow keys / left joystick</p><p>Melee: Space / Attack · Energy: F / click / Fire</p><p>Aim: mouse / right joystick · Cloak: Q / Cloak</p><p>Revive: hold E / Revive near the blue ally while cloaked</p><p>Upgrades: 1 / 2 / 3 or select a button</p><p>Pause: Esc / Pause · Desktop and iPad landscape recommended</p></div><button type="button">Start Run</button>';document.body.append(startMenu);
  const pauseScreen=document.createElement('section');pauseScreen.id='pause-screen';pauseScreen.hidden=true;pauseScreen.innerHTML='<h2>Paused</h2><p>Encounter and timers are paused.</p><button type="button" class="resume">Resume</button><button type="button" class="return-menu">Return to Menu</button>';document.body.append(pauseScreen);
  const pauseButton=document.createElement('button');pauseButton.id='pause-button';pauseButton.type='button';pauseButton.textContent='Pause · Esc';document.body.append(pauseButton);
  function updateFlow(){startMenu.hidden=flow.mode!=='menu';pauseScreen.hidden=flow.mode!=='paused';pauseButton.hidden=flow.mode!=='playing';pauseButton.disabled=progression.paused;}
@@ -119,6 +120,38 @@ function start() {
  window.addEventListener('keyup',e=>{if(e.code==='KeyE')hunter.interruptRevival();});
  reviveButton.addEventListener('pointerdown',e=>{if(hunter.remaining>0&&state.health>0&&flow.mode==='playing'&&!progression.paused){reviveButton.setPointerCapture(e.pointerId);hunter.reviveHeld=true;}});
  for(const event of ['pointerup','pointercancel','lostpointercapture'])reviveButton.addEventListener(event,()=>hunter.interruptRevival());
+ const aim=new THREE.Vector2(0,-1),mouseAim=new THREE.Vector2();let aimingWithMouse=false,aimPointer:number|null=null;
+ const raycaster=new THREE.Raycaster(),aimPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0),aimPoint=new THREE.Vector3();
+ const aimLine=new THREE.Mesh(new THREE.BoxGeometry(.05,.04,3),new THREE.MeshBasicMaterial({color:0x8cf5ff,transparent:true,opacity:.7}));aimLine.position.set(0,.08,-1.7);player.add(aimLine);
+ const aimPad=document.createElement('div');aimPad.id='aim-pad';aimPad.setAttribute('aria-label','Touch aim joystick');aimPad.innerHTML='<span>AIM</span><div id="aim-stick"></div>';document.body.append(aimPad);
+ const aimStick=aimPad.querySelector<HTMLElement>('#aim-stick')!;
+ const fireButton=document.createElement('button');fireButton.id='fire';fireButton.type='button';fireButton.textContent='Fire · F';document.body.append(fireButton);
+ const fireHud=document.createElement('div');fireHud.id='fire-hud';document.body.append(fireHud);
+ let shotCooldown=0,muzzleTime=0;
+ type Shot={mesh:THREE.Mesh<THREE.SphereGeometry,THREE.MeshBasicMaterial>,direction:THREE.Vector2,life:number,damage:number};const shots:Shot[]=[];
+ function clearShots(){for(const s of shots){scene.remove(s.mesh);s.mesh.geometry.dispose();s.mesh.material.dispose();}shots.length=0;}
+ function fire(){if(document.hidden||flow.mode!=='playing'||state.health===0||victorious||progression.paused||shotCooldown>0)return;
+  hunter.end();shotCooldown=.45;muzzleTime=.15;
+  const mesh=new THREE.Mesh(new THREE.SphereGeometry(.12,8,8),new THREE.MeshBasicMaterial({color:0x8cf5ff}));mesh.position.set(player.position.x,1,player.position.z);scene.add(mesh);shots.push({mesh,direction:aim.clone(),life:1.5,damage:progression.attackDamage});
+ }
+ renderer.domElement.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'){const r=renderer.domElement.getBoundingClientRect();mouseAim.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);aimingWithMouse=true;}});
+ renderer.domElement.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'&&e.button===0)fire();});fireButton.addEventListener('click',fire);
+ window.addEventListener('keydown',e=>{if(e.code==='KeyF'){e.preventDefault();if(!e.repeat)fire();}});
+ function dragAim(e:PointerEvent){const r=aimPad.getBoundingClientRect(),v=new THREE.Vector2((e.clientX-r.left-r.width/2)/38,(e.clientY-r.top-r.height/2)/38);if(v.length()>1)v.normalize();if(v.length()>.15){aim.copy(v).normalize();aimingWithMouse=false;}aimStick.style.transform=`translate(${v.x*38}px,${v.y*38}px)`;}
+ aimPad.addEventListener('pointerdown',e=>{if(aimPointer!==null)return;aimPointer=e.pointerId;aimPad.setPointerCapture(e.pointerId);dragAim(e);});aimPad.addEventListener('pointermove',e=>{if(e.pointerId===aimPointer)dragAim(e);});for(const event of ['pointerup','pointercancel','lostpointercapture'])aimPad.addEventListener(event,()=>{aimPointer=null;aimStick.style.transform='';});
+ function updateShots(dt:number){
+  for(let i=shots.length-1;i>=0;i--){if(progression.paused)break;const shot=shots[i],a=shot.mesh.position,b=a.clone().add(new THREE.Vector3(shot.direction.x,0,shot.direction.y).multiplyScalar(22*dt));let nearest=Infinity;let victim:Enemy|null=null,hitTarget=false;
+   for(const o of obstacles){const t=segmentHit(a.x,a.z,b.x,b.z,o);if(t!==null&&t<nearest){nearest=t;victim=null;hitTarget=false;}}
+   if(targetHealth>0){const t=segmentHit(a.x,a.z,b.x,b.z,targetBounds);if(t!==null&&t<nearest){nearest=t;victim=null;hitTarget=true;}}
+   for(const e of enemies)if(e.health>0){const t=segmentHit(a.x,a.z,b.x,b.z,{x:e.mesh.position.x,z:e.mesh.position.z,w:e.kind==='armored'?1.2:e.kind==='runner'?.55:.9,d:e.kind==='armored'?1.1:e.kind==='runner'?.55:.8});if(t!==null&&t<nearest){nearest=t;victim=e;hitTarget=false;}}
+   if(nearest!==Infinity){
+    if(victim){victim.health=Math.max(0,victim.health-shot.damage);victim.flash=.18;feedback.textContent=`Energy hit! −${shot.damage} HP`;if(victim.health===0){victim.mesh.visible=false;dropPickup(victim.mesh.position);progression.award(enemyTypes[victim.kind].xp);flow.kills++;}updateEnemyHealth();showUpgrades();}
+    else if(hitTarget){targetHealth=Math.max(0,targetHealth-shot.damage);flash=.18;updateHealth();feedback.textContent=`Target hit! −${shot.damage} HP`;if(targetHealth===0){target.visible=false;respawn=3;}}
+   }
+   shot.mesh.position.copy(b);shot.life-=dt;
+   if(nearest!==Infinity||shot.life<=0||Math.abs(b.x)>19||Math.abs(b.z)>19){scene.remove(shot.mesh);shot.mesh.geometry.dispose();shot.mesh.material.dispose();shots.splice(i,1);}
+  }
+ }
  function attack(){
   if(document.hidden||flow.mode!=='playing'||state.health===0||victorious||progression.paused||cooldown>0)return;
   hunter.end();cooldown=.45;pulseTime=.25;pulse.position.set(player.position.x,.08,player.position.z);
@@ -135,7 +168,7 @@ function start() {
  const keys=new Set<string>();const accepted=['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowLeft','ArrowDown','ArrowRight'];
  window.addEventListener('keydown',e=>{if(accepted.includes(e.code)){e.preventDefault();keys.add(e.code);}});window.addEventListener('keyup',e=>keys.delete(e.code));
  const pad=document.querySelector<HTMLDivElement>('#joystick')!,stick=document.querySelector<HTMLDivElement>('#stick')!;let pointer:number|null=null;const touch=new THREE.Vector2();
- const reset=()=>{hunter.interruptRevival();keys.clear();touch.set(0,0);pointer=null;stick.style.transform='';};window.addEventListener('blur',reset);document.addEventListener('visibilitychange',()=>{if(document.hidden)reset();});
+ const reset=()=>{hunter.interruptRevival();aimPointer=null;aimStick.style.transform='';keys.clear();touch.set(0,0);pointer=null;stick.style.transform='';};window.addEventListener('blur',reset);document.addEventListener('visibilitychange',()=>{if(document.hidden)reset();});
  function drag(e:PointerEvent){const r=pad.getBoundingClientRect();touch.set((e.clientX-r.left-r.width/2)/38,(e.clientY-r.top-r.height/2)/38);if(touch.length()>1)touch.normalize();stick.style.transform=`translate(${touch.x*38}px,${touch.y*38}px)`;}
  pad.addEventListener('pointerdown',e=>{if(pointer!==null)return;pointer=e.pointerId;pad.setPointerCapture(pointer);drag(e);});pad.addEventListener('pointermove',e=>{if(e.pointerId===pointer)drag(e);});for(const name of ['pointerup','pointercancel','lostpointercapture'])pad.addEventListener(name,()=>{touch.set(0,0);pointer=null;stick.style.transform='';});
  const radius=.65,limit=19-radius;
@@ -147,7 +180,7 @@ function start() {
  const targetBounds={x:target.position.x,z:target.position.z,w:1.1,d:1.1};
  function blocked(x:number,z:number){return obstacles.some(o=>overlapsBox(x,z,o))||(targetHealth>0&&overlapsBox(x,z,targetBounds));}
  function restart(){
-  flow.start();
+  flow.start();clearShots();shotCooldown=0;muzzleTime=0;aim.set(0,-1);aimingWithMouse=false;
   reset();progression.reset();state.maxHealth=100;updateProgression();hunter.reset();allyBody.rotation.z=0;allyBody.position.y=.25;allyMaterial.emissive.setHex(0x183b77);
   for(const e of enemies)disposeGroup(e.mesh);enemies.length=0;for(const p of pickups)disposeGroup(p);pickups.length=0;
   waveIndex=0;waveDelay=0;pending=[...waves[0]];victorious=false;victory.hidden=true;
@@ -160,7 +193,7 @@ function start() {
  function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}window.addEventListener('resize',resize);resize();
  renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();fail('Graphics context lost. Reload to resume.');});
  let previous=performance.now();function frame(now:number){const dt=document.hidden||flow.mode!=='playing'||state.health===0||victorious||progression.paused?0:Math.min((now-previous)/1000,.05);previous=now;flow.tick(dt);updateFlow();
- cooldown=Math.max(0,cooldown-dt);flash=Math.max(0,flash-dt);pulseTime=Math.max(0,pulseTime-dt);
+ shotCooldown=Math.max(0,shotCooldown-dt);muzzleTime=Math.max(0,muzzleTime-dt);cooldown=Math.max(0,cooldown-dt);flash=Math.max(0,flash-dt);pulseTime=Math.max(0,pulseTime-dt);
  attackButton.disabled=flow.mode!=='playing'||cooldown>0||state.health===0||victorious||progression.paused;
  targetMaterial.emissive.setHex(flash>0?0xffffff:0x55300c);
  pulse.scale.setScalar(1+(1-pulseTime/.25)*4);pulse.material.opacity=pulseTime/.25*.65;
@@ -215,6 +248,10 @@ function start() {
  if(hunter.allyRevived){allyBody.rotation.z=Math.PI/2;allyBody.position.y=.9;allyMaterial.emissive.setHex(0x27a554);}
  healingOverlay.style.opacity=String(Math.min(healingTime/.35,1)*.6);healingNotice.style.opacity=healingTime>0?'1':'0';
  if(input.lengthSq()>.001){const target=Math.atan2(-input.x,-input.y);player.rotation.y+=Math.atan2(Math.sin(target-player.rotation.y),Math.cos(target-player.rotation.y))*(1-Math.exp(-14*dt));}body.position.y=1+(input.lengthSq()>.01?Math.sin(now*.015)*.04:0);
+ if(aimingWithMouse){raycaster.setFromCamera(mouseAim,camera);if(raycaster.ray.intersectPlane(aimPlane,aimPoint)){const v=new THREE.Vector2(aimPoint.x-player.position.x,aimPoint.z-player.position.z);if(v.length()>.1)aim.copy(v).normalize();}}
+ aimLine.rotation.y=Math.atan2(-aim.x,-aim.y)-player.rotation.y;aimLine.position.set(aim.x*1.7,.08,aim.y*1.7);aimLine.material.color.setHex(muzzleTime>0?0xffffff:0x8cf5ff);
+ if(dt>0)updateShots(dt);
+ fireButton.disabled=flow.mode!=='playing'||state.health===0||victorious||progression.paused||shotCooldown>0;fireHud.textContent=shotCooldown>0?`Energy cooldown ${shotCooldown.toFixed(1)}s`:`Energy ready · ${progression.attackDamage} damage · F / Click / Fire`;
  camera.position.lerp(player.position.clone().add(cameraOffset),1-Math.exp(-5*dt));look.lerp(player.position,1-Math.exp(-7*dt));camera.lookAt(look);renderer.render(scene,camera);requestAnimationFrame(frame);
  }updateProgression();updateFlow();startMenu.querySelector<HTMLButtonElement>('button')!.focus();pending=[...waves[0]];spawnPending();updateEnemyHealth();requestAnimationFrame(frame);
 }
