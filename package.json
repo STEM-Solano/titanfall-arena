@@ -1,1 +1,32 @@
-{"name":"titanfall-arena","version":"0.1.0","private":true,"type":"module","scripts":{"dev":"vite --host 0.0.0.0","build":"tsc --noEmit && vite build","preview":"vite preview --host 0.0.0.0"},"dependencies":{"three":"^0.180.0"},"devDependencies":{"@types/three":"^0.180.0","typescript":"~5.9.3","vite":"^7.1.9"}}
+{
+  "name": "titanfall-arena",
+  "version": "0.9.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "check": "tsc --noEmit",
+    "build:server": "esbuild server/src/main.ts --bundle --platform=node --format=esm --packages=external --outfile=dist-server/main.js",
+    "start:server": "node dist-server/main.js",
+    "dev:server": "node --import tsx server/src/main.ts",
+    "test": "node --import tsx --test server/tests/*.test.ts"
+  },
+  "dependencies": {
+    "three": "^0.180.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/three": "^0.180.0",
+    "@types/ws": "^8.18.2",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.9"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

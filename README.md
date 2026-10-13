@@ -1,4 +1,4 @@
-# titanfall-arena — Milestone 8
+# titanfall-arena — Milestone 9
 Original sci-fi action RPG enemy encounter prototype. TypeScript, Vite and Three.js.
 
 ## Run locally
@@ -69,3 +69,10 @@ Victory and defeat show enemies defeated, level reached, chosen upgrades and act
 
 ## Milestone 8 — v0.8.0 ranged combat
 Aim with the mouse on desktop, then click the arena or press F to fire. On iPad landscape, drag the right AIM joystick and tap Fire; the left joystick still moves. Space / Attack retains melee combat. The ground line shows aiming direction and flashes on firing. Energy shots travel at 22 m/s for 1.5 seconds, deal current upgraded attack damage, and use a separate 0.45-second cooldown shown in the HUD. Cover and living targets stop projectiles; only the nearest hit takes damage. Segment collision prevents tunneling. Firing ends cloak and revival. Projectiles pause with the encounter and clear on Restart/menu reset. Enemy defeats award XP and pickups; the training target awards none. Existing iPhone layout and zoom issues remain unresolved; desktop and iPad landscape are priorities.
+
+## Milestone 9 — v0.9.0 cooperative multiplayer prototype
+Single-player remains at the main page. Use **Co-op Lobby** or `coop.html` for separate server-authoritative cooperative play. Backend code and local simulated tests are provided; **no backend is deployed and two-device online multiplayer is not yet verified**.
+
+See [server/README.md](server/README.md) for exact backend deployment fields, local setup, co-op rules, disconnect behavior, and staged two-player/six-player acceptance checks. The browser client stays on GitHub Pages and accepts a deployed secure backend URL in the lobby, without rebuilding. No multiplayer accounts, bosses or PvP are added. iPhone layout and zoom issues remain unresolved.
+
+Checks: `npm run check`, `npm test`, `npm run build`, `npm run build:server`. Backend: `npm run start:server`. Client: `npm run dev`. Node 22.12+ required.

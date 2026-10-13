@@ -1,0 +1,14 @@
+# Prepared only; applying this requires your Render account. No deployment has occurred.
+services:
+  - type: web
+    name: titanfall-arena-coop
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run check && npm test && npm run build:server
+    startCommand: npm run start:server
+    healthCheckPath: /health
+    envVars:
+      - key: ALLOWED_ORIGINS
+        value: https://stem-solano.github.io
+      - key: NODE_ENV
+        value: production
