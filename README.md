@@ -79,3 +79,6 @@ Checks: `npm run check`, `npm test`, `npm run build`, `npm run build:server`. Ba
 
 ### v0.9.1 lobby fix
 The live backend URL is prefilled. Rejected joins keep the connection open and show the server reason, including expired codes and already-started matches. Correct the code and retry Join Room. Join before host start; after a backend redeploy or host leaving an empty room, create a fresh lobby/code. Client patch remains compatible with protocol 9 / backend v0.9.0.
+
+### v0.9.2 host survival fix
+When the host is downed, host control passes to the last living connected teammate in join order. Downed players remain in the room and can be revived; their camera spectates the surviving host. Host disconnect uses the same last-survivor preference. Revival does not steal host control back. If all players are downed, show team defeat while keeping everyone connected; only an explicit host reset returns the team to the lobby. Backend restarts/network failures remain separate disconnect events.
