@@ -20,7 +20,7 @@ export class Room{
  constructor(public code:string){}
  add(id:string,name:string){if(this.phase!=='lobby')throw Error('Match already started. Wait for a new room.');if(this.players.size>=ROOM_LIMIT)throw Error('Room is full (6 players).');const p:Player={id,name,x:0,z:0,health:100,downed:false,ready:false,input:zeroInput(),inputTime:0,hunter:new HunterAbility(),progression:new Progression(),meleeCooldown:0,fireCooldown:0,reviveTarget:null,hit:0,healed:0,attackFlash:0,connected:true,actions:[]};this.players.set(id,p);if(!this.host)this.host=id;this.notice=`${name} joined.`;return p;}
  remove(id:string){const p=this.players.get(id);if(!p)return;this.players.delete(id);this.shots=this.shots.filter(s=>s.owner!==id);if(this.host===id)this.host=(this.phase==='playing'?[...this.players.values()].filter(p=>p.connected&&!p.downed&&p.health>0).at(-1):undefined)?.id??this.lastConnected()?.id??'';this.notice=`${p.name} disconnected / left. ${this.host?'Host: '+this.players.get(this.host)!.name:''}`;for(const other of this.players.values())if(other.reviveTarget===id){other.hunter.interruptRevival();other.reviveTarget=null;}if(this.phase==='playing'&&[...this.players.values()].some(p=>p.connected)&&[...this.players.values()].filter(p=>p.connected).every(p=>p.downed))this.phase='defeat';}
- private lastConnected(){return [...this.players.values()].at(-1);}
+ private lastConnected(){return [...this.players.values()].filter(p=>p.connected).at(-1);}
  private transferDownedHost(){
   const current=this.players.get(this.host);if(current?.connected&&(this.phase!=='playing'||(!current.downed&&current.health>0)))return;
   const connected=[...this.players.values()].filter(p=>p.connected);
@@ -28,7 +28,7 @@ export class Room{
   if(next&&next.id!==this.host){this.host=next.id;this.notice+=` Host control passed to ${next.name}; everyone stays in the match.`;}
  }
  disconnect(id:string){const p=this.players.get(id);if(!p)return;p.connected=false;p.input=zeroInput();p.actions=[];p.hunter.interruptRevival();this.notice=`${p.name} lost connection; slot reserved for 60 seconds.`;this.transferDownedHost();}
- reconnect(id:string){const p=this.players.get(id);if(!p)throw Error('Room session expired.');p.connected=true;p.input=zeroInput();p.inputTime=this.time;this.notice=`${p.name} reconnected to the same encounter.`;}
+ reconnect(id:string){const p=this.players.get(id);if(!p)throw Error('Room session expired.');p.connected=true;p.input=zeroInput();p.inputTime=this.time;this.notice=`${p.name} reconnected to the same encounter.`;this.transferDownedHost();}
  ready(id:string,ready:boolean){if(this.phase==='lobby')this.players.get(id)!.ready=ready;}
  start(id:string){if(id!==this.host)throw Error('Only the host can start.');if(this.phase!=='lobby')throw Error('Match already started.');if([...this.players.values()].filter(p=>p.connected).length<2)throw Error('At least two players are required.');if([...this.players.values()].some(p=>!p.connected||!p.ready))throw Error('Every player must be ready.');this.resetMatch();}
  restart(id:string){if(id!==this.host)throw Error('Only the host can return the team to the lobby.');if(this.phase==='playing')throw Error('Finish the encounter first.');this.phase='lobby';this.resetState();this.notice='Host reset the encounter. Ready up for another run.';}

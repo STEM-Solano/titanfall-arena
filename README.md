@@ -86,3 +86,24 @@ When the host is downed, host control passes to the last living connected teamma
 ### v0.9.3 connection and movement reliability
 Cached navigation replaces repeated per-enemy grid rebuilding/sorting. Co-op rendering buffers 120 ms of authoritative snapshots and does not extrapolate through cover or rewind on late packets. New enemies appear at their real spawn coordinates.
 Brief disconnects retain a player slot for 60 seconds and reconnect automatically using a memory-only resume token. Health, XP, room and match state remain on the server; host control passes to connected survivors. The last game view stays visible with a diagnostic connection overlay instead of silently returning to the lobby. A backend restart still loses in-memory rooms; the overlay explains that the room cannot be restored and offers an explicit Return to lobby. Health checks include tick timing diagnostics. These changes do not guarantee real-device latency or hosting uptime; retest with two devices.
+
+### Milestone 10 — v0.10.0 stability testing
+
+Preserves v0.9.3 gameplay and protocol 9. Fixes host fallback choosing an offline member when the host leaves, and restores host control to a connected member when everyone was offline and a non-host reconnects.
+
+Automated coverage: 20 tests, including six actual local WebSocket connections observing server-authoritative movement/aim, melee, projectiles, cloak/healing, teammate revival, pickups, shared XP, all upgrade types, three scaled waves (6/9/15), victory, full-team defeat and host-controlled restart. A seventh join is rejected. Deterministic encounter fixtures and fixed ticks accelerate gameplay; these are simulated results, not six humans playing. Existing single-player and browser-controller regression tests remain enabled.
+
+Reconnect tests retain identity/progress and transfer host on disconnect; test session takeover, acceptance at exactly 60 seconds, rejection after 60 seconds, expiry cleanup and explicit-leave cleanup. An injected backend clock advances reservation time without waiting a minute; production uses Date.now and retains the 60-second limit. Rooms remain in memory and cannot survive a backend restart.
+
+Snapshot latency simulation: 150 ms one-way delivery delay plus deterministic 0–100 ms jitter and ordered packet bursts, rendered every 10 ms. No reverse motion or extrapolation; largest step 0.120 m, longest hold 30 ms. This tests the interpolation buffer, not end-to-end internet input latency, device frame rate or real network packet loss.
+
+Validation commands: `npm test`, `npm run check`, `npm run build`, `npm run build:server`.
+
+Two-device check after deployment:
+1. Refresh both devices and confirm v0.10.0. Create/join a fresh co-op room, ready both, and start.
+2. Move and fire together; compare enemies, health, cloak healing, pickups, XP and upgrades. One upgrade choice must not pause the other player.
+3. Down the host; verify host reassignment without leaving the encounter. Cloak and hold Revive for three seconds.
+4. Briefly disable one device's network, then restore it within 60 seconds without refreshing the page; verify same player and progress resume. Repeat with more than 60 seconds and confirm an explicit expired-session message.
+5. Clear three waves for victory; restart and confirm XP/upgrades reset. In another run, let both players fall and confirm team defeat and restart.
+
+Real-device v0.10.0 verification is pending. Prior two-device v0.9.3 host transfer, defeat messaging, revival and smoother movement were confirmed by the user. Six physical devices have not been tested. iPhone layout and mobile zoom issues remain unresolved and deferred. No new gameplay features, bosses or PvP.
