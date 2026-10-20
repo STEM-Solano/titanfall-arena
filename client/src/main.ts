@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import './style.css';
+import {Boss,inZone} from '../../shared/boss';
 import { segmentHit } from './projectiles';
 import { RunFlow } from './run-flow';
 import { Progression, type Upgrade } from './progression';
@@ -49,10 +50,20 @@ function start() {
  function updateHealth(){healthBar.value=targetHealth;healthLabel.textContent=`${targetHealth} / 100 HP`;}
  type Enemy={kind:EnemyKind,mesh:THREE.Group,material:THREE.MeshStandardMaterial,health:number,cooldown:number,flash:number,pathTimer:number,path:Point[]};
  const enemies:Enemy[]=[];const pickups:THREE.Group[]=[];
+ let boss:Boss|null=null;
  let waveIndex=0,waveDelay=0,pending:EnemyKind[]=[],victorious=false;
  const enemyPanel=document.createElement('section');enemyPanel.id='enemy-info';enemyPanel.innerHTML='<span class="eyebrow">WAVE 1 / 3</span><p>Preparing encounter</p>';document.body.append(enemyPanel);
- const victory=document.createElement('section');victory.id='victory';victory.hidden=true;victory.innerHTML='<h2>Victory</h2><p>All three waves cleared.</p><div class="run-summary"></div><button type="button" class="play-again">Play Again</button><button type="button" class="return-menu">Return to Menu</button>';document.body.append(victory);
- function updateEnemyHealth(){enemyPanel.querySelector('.eyebrow')!.textContent=`WAVE ${waveIndex+1} / ${waves.length}`;enemyPanel.querySelector('p')!.textContent=waveDelay>0?`Next wave in ${Math.ceil(waveDelay)}s`:enemies.filter(e=>e.health>0).map(e=>`${enemyTypes[e.kind].name} ${e.health} HP`).join(' · ')||'Wave cleared';}
+ const victory=document.createElement('section');victory.id='victory';victory.hidden=true;victory.innerHTML='<h2>Victory</h2><p>Nullforge Sentinel defeated.</p><div class="run-summary"></div><button type="button" class="play-again">Play Again</button><button type="button" class="return-menu">Return to Menu</button>';document.body.append(victory);
+ function updateEnemyHealth(){enemyPanel.querySelector('.eyebrow')!.textContent=boss?'FINAL BOSS':`WAVE ${waveIndex+1} / ${waves.length}`;enemyPanel.querySelector('p')!.textContent=waveDelay>0?`Next wave in ${Math.ceil(waveDelay)}s`:enemies.filter(e=>e.health>0).map(e=>`${enemyTypes[e.kind].name} ${e.health} HP`).join(' · ')||'Wave cleared';}
+ const bossPanel=document.createElement('section');bossPanel.id='solo-boss';bossPanel.hidden=true;bossPanel.innerHTML='<strong></strong><progress max="600" value="600" aria-label="Boss health"></progress><p role="status" aria-live="polite"></p>';document.body.append(bossPanel);
+ const bossModel=new THREE.Group();scene.add(bossModel);bossModel.visible=false;box(3.2,2.6,3.2,0,1.7,0,material(0x5b617c),bossModel);const bossCore=box(1.5,1.5,1.5,0,3.2,0,material(0x6bffff),bossModel);for(let n=0;n<4;n++){const fin=box(.35,2.5,1.5,Math.cos(n*Math.PI/2)*1.7,1.7,Math.sin(n*Math.PI/2)*1.7,material(0xa39dce),bossModel);fin.rotation.y=n*Math.PI/2;}
+ const hazards=new THREE.Group();scene.add(hazards);let bossZoneKey='';
+ function updateBoss(){bossPanel.hidden=!boss||flow.mode!=='playing';bossModel.visible=!!boss&&boss.health>0;if(boss){bossModel.position.set(boss.x,0,boss.z);(bossCore.material as THREE.MeshStandardMaterial).color.setHex(boss.hit>0?0xffffff:boss.phase===2?0xff6cbe:0x6bffff);bossPanel.querySelector('strong')!.textContent=`${boss.name} · Phase ${boss.phase} · ${Math.ceil(boss.health)} / ${boss.maxHealth} HP`;bossPanel.querySelector('progress')!.value=boss.health;bossPanel.querySelector('p')!.textContent=boss.remaining>0?`${boss.attack==='lance'?'LANCE — leave the red strip':'PULSE — leave the orange circles'} · ${boss.remaining.toFixed(1)}s`:boss.blasting>0?'IMPACT':`${boss.z<player.position.z?'N':'S'}${boss.x<player.position.x?'W':'E'} · ${Math.ceil(Math.hypot(boss.x-player.position.x,boss.z-player.position.z))} m away · Dodge marked attacks`;}
+  const key=JSON.stringify(boss?.zones??[]);if(key!==bossZoneKey){bossZoneKey=key;for(const mesh of [...hazards.children]){hazards.remove(mesh);if(mesh instanceof THREE.Mesh){mesh.geometry.dispose();(mesh.material as THREE.Material).dispose();}}for(const zone of boss?.zones??[]){const mat=new THREE.MeshBasicMaterial({color:zone.kind==='line'?0xff4568:0xffb347,transparent:true,opacity:.3,depthWrite:false});const mesh=new THREE.Mesh(zone.kind==='line'?new THREE.BoxGeometry(zone.width,.05,zone.length):new THREE.CylinderGeometry(zone.radius,zone.radius,.05,64),mat);if(zone.kind==='line'){mesh.position.set(zone.x+zone.ax*zone.length/2,.04,zone.z+zone.az*zone.length/2);mesh.rotation.y=Math.atan2(zone.ax,zone.az);}else mesh.position.set(zone.x,.04,zone.z);hazards.add(mesh);}}
+  for(const mesh of hazards.children)if(mesh instanceof THREE.Mesh)(mesh.material as THREE.MeshBasicMaterial).opacity=boss?.blasting?.75:.3;
+ }
+ function spawnBoss(){const candidates:Point[]=[];for(let x=-15;x<=15;x+=3)for(let z=-15;z<=15;z+=3)if(!obstacles.some(o=>overlapsBox(x,z,o,1.35))&&!overlapsBox(x,z,targetBounds,1.35)&&Math.hypot(x-ally.position.x,z-ally.position.z)>3)candidates.push({x,z});candidates.sort((a,b)=>Math.hypot(b.x-player.position.x,b.z-player.position.z)-Math.hypot(a.x-player.position.x,a.z-player.position.z));const pos=candidates[0]??{x:0,z:-12};boss=new Boss(pos.x,pos.z,1,0);clearShots();feedback.textContent='Sentinel online · Dodge the marked attacks';updateBoss();}
+ function damageBoss(amount:number){if(!boss||boss.health<=0)return;boss.damage(amount,false);feedback.textContent=`Sentinel hit! −${amount} HP`;if(boss.health===0){progression.award(200);progression.pending=0;flow.kills++;updateProgression();victorious=true;reset();victory.hidden=false;finishRun(victory);victory.querySelector<HTMLButtonElement>('button')!.focus();}updateBoss();}
  function dropPickup(position:THREE.Vector3){const pickup=new THREE.Group();pickup.position.copy(position);scene.add(pickup);const green=material(0x6bff9b,0x27a554);box(.65,.25,.65,0,.35,0,green,pickup);box(.14,.08,.45,0,.52,0,material(0xffffff),pickup);box(.45,.08,.14,0,.52,0,material(0xffffff),pickup);pickups.push(pickup);}
  function disposeGroup(group:THREE.Group){scene.remove(group);group.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose();}});}
  function spawnPending(){
@@ -72,7 +83,7 @@ function start() {
  let damageTime=0;
  function updatePlayerHealth(){document.querySelector('aside strong')!.innerHTML=`${Math.ceil(state.health)} <small>/ ${state.maxHealth} HP</small>`;document.querySelector<HTMLElement>('aside .health i')!.style.width=`${state.health/state.maxHealth*100}%`;document.querySelector('aside p')!.textContent=state.health===0?'Operator defeated':damageTime>0?'Taking damage · Find cover':healingTime>0?`Healed +${healedAmount} HP`:hunter.remaining>0?'Invisible · Healing 5 HP/s':'Systems nominal';}
  const flow=new RunFlow();
- const startMenu=document.createElement('section');startMenu.id='start-menu';startMenu.innerHTML='<h2>Titanfall Arena</h2><p>Hunter · Survive three waves</p><div class="controls-guide"><p>Move: WASD / arrow keys / left joystick</p><p>Melee: Space / Attack · Energy: F / click / Fire</p><p>Aim: mouse / right joystick · Cloak: Q / Cloak</p><p>Revive: hold E / Revive near the blue ally while cloaked</p><p>Upgrades: 1 / 2 / 3 or select a button</p><p>Pause: Esc / Pause · Desktop and iPad landscape recommended</p></div><button type="button">Start Run</button><a class="coop-link" href="./coop.html">Co-op Lobby · Backend setup required</a>';document.body.append(startMenu);
+ const startMenu=document.createElement('section');startMenu.id='start-menu';startMenu.innerHTML='<h2>Titanfall Arena</h2><p>Hunter · Survive three waves, then defeat the Sentinel</p><div class="controls-guide"><p>Move: WASD / arrow keys / left joystick</p><p>Melee: Space / Attack · Energy: F / click / Fire</p><p>Aim: mouse / right joystick · Cloak: Q / Cloak</p><p>Revive: hold E / Revive near the blue ally while cloaked</p><p>Upgrades: 1 / 2 / 3 or select a button</p><p>Pause: Esc / Pause · Desktop and iPad landscape recommended</p></div><button type="button">Start Run</button><a class="coop-link" href="./coop.html">Co-op Lobby · Backend setup required</a>';document.body.append(startMenu);
  const pauseScreen=document.createElement('section');pauseScreen.id='pause-screen';pauseScreen.hidden=true;pauseScreen.innerHTML='<h2>Paused</h2><p>Encounter and timers are paused.</p><button type="button" class="resume">Resume</button><button type="button" class="return-menu">Return to Menu</button>';document.body.append(pauseScreen);
  const pauseButton=document.createElement('button');pauseButton.id='pause-button';pauseButton.type='button';pauseButton.textContent='Pause · Esc';document.body.append(pauseButton);
  function updateFlow(){startMenu.hidden=flow.mode!=='menu';pauseScreen.hidden=flow.mode!=='paused';pauseButton.hidden=flow.mode!=='playing';pauseButton.disabled=progression.paused;}
@@ -140,12 +151,14 @@ function start() {
  function dragAim(e:PointerEvent){const r=aimPad.getBoundingClientRect(),v=new THREE.Vector2((e.clientX-r.left-r.width/2)/38,(e.clientY-r.top-r.height/2)/38);if(v.length()>1)v.normalize();if(v.length()>.15){aim.copy(v).normalize();aimingWithMouse=false;}aimStick.style.transform=`translate(${v.x*38}px,${v.y*38}px)`;}
  aimPad.addEventListener('pointerdown',e=>{if(aimPointer!==null)return;aimPointer=e.pointerId;aimPad.setPointerCapture(e.pointerId);dragAim(e);});aimPad.addEventListener('pointermove',e=>{if(e.pointerId===aimPointer)dragAim(e);});for(const event of ['pointerup','pointercancel','lostpointercapture'])aimPad.addEventListener(event,()=>{aimPointer=null;aimStick.style.transform='';});
  function updateShots(dt:number){
-  for(let i=shots.length-1;i>=0;i--){if(progression.paused)break;const shot=shots[i],a=shot.mesh.position,b=a.clone().add(new THREE.Vector3(shot.direction.x,0,shot.direction.y).multiplyScalar(22*dt));let nearest=Infinity;let victim:Enemy|null=null,hitTarget=false;
-   for(const o of obstacles){const t=segmentHit(a.x,a.z,b.x,b.z,o);if(t!==null&&t<nearest){nearest=t;victim=null;hitTarget=false;}}
-   if(targetHealth>0){const t=segmentHit(a.x,a.z,b.x,b.z,targetBounds);if(t!==null&&t<nearest){nearest=t;victim=null;hitTarget=true;}}
-   for(const e of enemies)if(e.health>0){const t=segmentHit(a.x,a.z,b.x,b.z,{x:e.mesh.position.x,z:e.mesh.position.z,w:e.kind==='armored'?1.2:e.kind==='runner'?.55:.9,d:e.kind==='armored'?1.1:e.kind==='runner'?.55:.8});if(t!==null&&t<nearest){nearest=t;victim=e;hitTarget=false;}}
+  for(let i=shots.length-1;i>=0;i--){if(progression.paused)break;const shot=shots[i],a=shot.mesh.position,b=a.clone().add(new THREE.Vector3(shot.direction.x,0,shot.direction.y).multiplyScalar(22*dt));let nearest=Infinity;let victim:Enemy|null=null,hitTarget=false,hitBoss=false;
+   for(const o of obstacles){const t=segmentHit(a.x,a.z,b.x,b.z,o);if(t!==null&&t<nearest){nearest=t;victim=null;hitTarget=false;hitBoss=false;}}
+   if(targetHealth>0){const t=segmentHit(a.x,a.z,b.x,b.z,targetBounds);if(t!==null&&t<nearest){nearest=t;victim=null;hitTarget=true;hitBoss=false;}}
+   if(boss&&boss.health>0){const t=segmentHit(a.x,a.z,b.x,b.z,{x:boss.x,z:boss.z,w:3.2,d:3.2});if(t!==null&&t<nearest){nearest=t;victim=null;hitTarget=false;hitBoss=true;}}
+   for(const e of enemies)if(e.health>0){const t=segmentHit(a.x,a.z,b.x,b.z,{x:e.mesh.position.x,z:e.mesh.position.z,w:e.kind==='armored'?1.2:e.kind==='runner'?.55:.9,d:e.kind==='armored'?1.1:e.kind==='runner'?.55:.8});if(t!==null&&t<nearest){nearest=t;victim=e;hitTarget=false;hitBoss=false;}}
    if(nearest!==Infinity){
     if(victim){victim.health=Math.max(0,victim.health-shot.damage);victim.flash=.18;feedback.textContent=`Energy hit! −${shot.damage} HP`;if(victim.health===0){victim.mesh.visible=false;dropPickup(victim.mesh.position);progression.award(enemyTypes[victim.kind].xp);flow.kills++;}updateEnemyHealth();showUpgrades();}
+    else if(hitBoss){damageBoss(shot.damage);}
     else if(hitTarget){targetHealth=Math.max(0,targetHealth-shot.damage);flash=.18;updateHealth();feedback.textContent=`Target hit! −${shot.damage} HP`;if(targetHealth===0){target.visible=false;respawn=3;}}
    }
    shot.mesh.position.copy(b);shot.life-=dt;
@@ -155,7 +168,7 @@ function start() {
  function attack(){
   if(document.hidden||flow.mode!=='playing'||state.health===0||victorious||progression.paused||cooldown>0)return;
   hunter.end();cooldown=.45;pulseTime=.25;pulse.position.set(player.position.x,.08,player.position.z);
-  let enemyHit=false;
+  let enemyHit=false;if(boss&&boss.health>0&&Math.hypot(player.position.x-boss.x,player.position.z-boss.z)<=3){damageBoss(progression.attackDamage);enemyHit=true;if(victorious)return;}
   for(const e of enemies){if(e.health>0&&player.position.distanceTo(e.mesh.position)<=3){e.health=Math.max(0,e.health-progression.attackDamage);e.flash=.18;enemyHit=true;if(e.health===0){e.mesh.visible=false;dropPickup(e.mesh.position);progression.award(enemyTypes[e.kind].xp);flow.kills++;}}}updateEnemyHealth();showUpgrades();
   if(targetHealth<=0){feedback.textContent=enemyHit?`Enemy hit! −${progression.attackDamage} HP`:'Target respawning…';return;}
   if(player.position.distanceTo(target.position)>3){feedback.textContent=enemyHit?`Enemy hit! −${progression.attackDamage} HP`:'Miss · Move within 3 meters';return;}
@@ -178,9 +191,9 @@ function start() {
   return (x-nx)**2+(z-nz)**2<(radius+padding)**2;
  }
  const targetBounds={x:target.position.x,z:target.position.z,w:1.1,d:1.1};
- function blocked(x:number,z:number){return obstacles.some(o=>overlapsBox(x,z,o))||(targetHealth>0&&overlapsBox(x,z,targetBounds));}
+ function blocked(x:number,z:number){return (boss!==null&&boss.health>0&&Math.hypot(x-boss.x,z-boss.z)<1.6+radius)|| obstacles.some(o=>overlapsBox(x,z,o))||(targetHealth>0&&overlapsBox(x,z,targetBounds));}
  function restart(){
-  flow.start();clearShots();shotCooldown=0;muzzleTime=0;aim.set(0,-1);aimingWithMouse=false;
+  boss=null;updateBoss();flow.start();clearShots();shotCooldown=0;muzzleTime=0;aim.set(0,-1);aimingWithMouse=false;
   reset();progression.reset();state.maxHealth=100;updateProgression();hunter.reset();allyBody.rotation.z=0;allyBody.position.y=.25;allyMaterial.emissive.setHex(0x183b77);
   for(const e of enemies)disposeGroup(e.mesh);enemies.length=0;for(const p of pickups)disposeGroup(p);pickups.length=0;
   waveIndex=0;waveDelay=0;pending=[...waves[0]];victorious=false;victory.hidden=true;
@@ -225,13 +238,14 @@ function start() {
  if(dt>0){
   if(pending.length)spawnPending();
   if(!pending.length&&enemies.every(e=>e.health===0)){
-   if(waveIndex===waves.length-1){victorious=true;reset();victory.hidden=false;finishRun(victory);victory.querySelector<HTMLButtonElement>('button')!.focus();}
+   if(waveIndex===waves.length-1){if(!boss)spawnBoss();}
    else{if(waveDelay===0)waveDelay=4;else{waveDelay=Math.max(0,waveDelay-dt);if(waveDelay===0){for(const e of enemies)disposeGroup(e.mesh);enemies.length=0;waveIndex++;pending=[...waves[waveIndex]];spawnPending();}}}
   }
  }updateEnemyHealth();
  const input=new THREE.Vector2(Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'))+touch.x,Number(keys.has('KeyS')||keys.has('ArrowDown'))-Number(keys.has('KeyW')||keys.has('ArrowUp'))+touch.y);if(flow.mode!=='playing'||state.health===0||victorious||progression.paused)input.set(0,0);if(input.length()>1)input.normalize();
  // Small steps keep movement from crossing collision surfaces even after a slow frame.
  const steps=Math.max(1,Math.ceil(6*dt/.1));for(let i=0;i<steps;i++){const x=THREE.MathUtils.clamp(player.position.x+input.x*6*dt/steps,-limit,limit);if(!blocked(x,player.position.z))player.position.x=x;const z=THREE.MathUtils.clamp(player.position.z+input.y*6*dt/steps,-limit,limit);if(!blocked(player.position.x,z))player.position.z=z;}
+ if(dt>0&&!progression.paused&&state.health>0&&boss&&boss.health>0){const damage=boss.tick(dt,hunter.remaining>0?[]:[player.position]);if(damage>0&&boss.zones.some(zone=>inZone(player.position,zone,.5))){hunter.damage();state.health=Math.max(0,state.health-damage);damageTime=.35;updatePlayerHealth();if(state.health===0){reset();defeat.hidden=false;finishRun(defeat);defeat.querySelector<HTMLButtonElement>('button')!.focus();}}}updateBoss();
  state.health=hunter.tick(dt,state.health,state.maxHealth,player.position.distanceTo(ally.position)<=2);
  for(let i=pickups.length-1;i>=0;i--){const pickup=pickups[i];if(state.health>0&&dt>0&&player.position.distanceTo(pickup.position)<=1){
   const before=state.health;state.health=Math.min(state.maxHealth,state.health+25);healedAmount=state.health-before;

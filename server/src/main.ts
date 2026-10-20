@@ -9,7 +9,7 @@ export function createBackend(options:{origins?:string[];maxRooms?:number;now?:(
  const allowed=options.origins??['https://stem-solano.github.io','http://localhost:5173','http://127.0.0.1:5173'];
  const rooms=new Map<string,Room>(),roomById=new Map<string,Room>(),sockets=new Map<string,WebSocket>();
  const sessions=new Map<string,{token:string;disconnectedAt:number|null}>();let lastTickMs=0,maxTickMs=0;
- const http=createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');if(req.url==='/health'){res.writeHead(200);res.end(JSON.stringify({ok:true,version:'0.12.0',protocol:PROTOCOL,rooms:rooms.size,tickMs:Number(lastTickMs.toFixed(2)),maxTickMs:Number(maxTickMs.toFixed(2))}));}else{res.writeHead(404);res.end(JSON.stringify({error:'Not found'}));}});
+ const http=createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');if(req.url==='/health'){res.writeHead(200);res.end(JSON.stringify({ok:true,version:'0.12.1',protocol:PROTOCOL,rooms:rooms.size,tickMs:Number(lastTickMs.toFixed(2)),maxTickMs:Number(maxTickMs.toFixed(2))}));}else{res.writeHead(404);res.end(JSON.stringify({error:'Not found'}));}});
  const ws=new WebSocketServer({noServer:true,maxPayload:4096});
  http.on('upgrade',(req,socket,head)=>{if(req.url!=='/ws'||(req.headers.origin&&!allowed.includes(req.headers.origin))||sockets.size>=120){socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');socket.destroy();return;}ws.handleUpgrade(req,socket,head,s=>ws.emit('connection',s,req));});
  const send=(s:WebSocket,value:unknown)=>{if(s.readyState===WebSocket.OPEN&&s.bufferedAmount<256_000)s.send(JSON.stringify(value),()=>{});};
