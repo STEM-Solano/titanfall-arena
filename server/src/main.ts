@@ -9,7 +9,7 @@ export function createBackend(options:{origins?:string[];maxRooms?:number;now?:(
  const allowed=options.origins??['https://stem-solano.github.io','http://localhost:5173','http://127.0.0.1:5173'];
  const rooms=new Map<string,Room>(),roomById=new Map<string,Room>(),sockets=new Map<string,WebSocket>();
  const sessions=new Map<string,{token:string;disconnectedAt:number|null}>();let lastTickMs=0,maxTickMs=0;
- const http=createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');if(req.url==='/health'){res.writeHead(200);res.end(JSON.stringify({ok:true,version:'0.10.0',protocol:PROTOCOL,rooms:rooms.size,tickMs:Number(lastTickMs.toFixed(2)),maxTickMs:Number(maxTickMs.toFixed(2))}));}else{res.writeHead(404);res.end(JSON.stringify({error:'Not found'}));}});
+ const http=createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');if(req.url==='/health'){res.writeHead(200);res.end(JSON.stringify({ok:true,version:'0.11.0',protocol:PROTOCOL,rooms:rooms.size,tickMs:Number(lastTickMs.toFixed(2)),maxTickMs:Number(maxTickMs.toFixed(2))}));}else{res.writeHead(404);res.end(JSON.stringify({error:'Not found'}));}});
  const ws=new WebSocketServer({noServer:true,maxPayload:4096});
  http.on('upgrade',(req,socket,head)=>{if(req.url!=='/ws'||(req.headers.origin&&!allowed.includes(req.headers.origin))||sockets.size>=120){socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');socket.destroy();return;}ws.handleUpgrade(req,socket,head,s=>ws.emit('connection',s,req));});
  const send=(s:WebSocket,value:unknown)=>{if(s.readyState===WebSocket.OPEN&&s.bufferedAmount<256_000)s.send(JSON.stringify(value),()=>{});};
@@ -28,7 +28,8 @@ export function createBackend(options:{origins?:string[];maxRooms?:number;now?:(
     room.add(id,name);roomById.set(id,room);publish(room);return;
    }
    if(m.type==='leave'){leave(id);return;}if(!room)throw Error('Join a room first.');
-   if(m.type==='ready'){if(typeof m.ready!=='boolean')throw Error('Invalid ready status');room.ready(id,m.ready);}
+   if(m.type==='allowAI'){if(typeof m.enabled!=='boolean')throw Error('Invalid AI toggle');room.setAI(id,m.enabled);}
+   else if(m.type==='ready'){if(typeof m.ready!=='boolean')throw Error('Invalid ready status');room.ready(id,m.ready);}
    else if(m.type==='start')room.start(id);else if(m.type==='restart')room.restart(id);
    else if(m.type==='input'){const i=m.input;if(!i||['x','z','ax','az'].some(k=>typeof i[k]!=='number'||!Number.isFinite(i[k]))||typeof i.revive!=='boolean')throw Error('Invalid input');const clamp=(v:number)=>Math.max(-1,Math.min(1,v));const input:Input={x:clamp(i.x),z:clamp(i.z),ax:clamp(i.ax),az:clamp(i.az),revive:i.revive};if(Math.hypot(input.ax,input.az)<.001){input.ax=0;input.az=-1;}room.input(id,input);}
    else if(m.type==='action'){if(!['melee','fire','cloak'].includes(m.action))throw Error('Invalid action');room.action(id,m.action);}

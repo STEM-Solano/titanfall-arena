@@ -89,3 +89,7 @@ No authentication or persistent accounts; room codes are invitation identifiers,
 
 ### v0.9.3 retest
 Temporarily disable a device network for a few seconds, then restore it within 60 seconds. Verify the connection overlay appears, the same player/health/XP/room returns automatically, and the surviving host keeps playing. A close code/reason is shown on failure. Then test host downing and revival again. `/health` includes recent `tickMs` and process-lifetime `maxTickMs`; these are debugging measurements, not an internet latency guarantee.
+
+### v0.11.0 AI teammates
+
+Host-only lobby message: `{type:"allowAI", enabled:true|false}`. Protocol 10 snapshots include `allowAI` and a boolean `ai` on each player. The host's Ready command fills bots; it does not start a match. Bots are authoritative room members, have no WebSocket or resume session, and cannot be host. Human join removes a bot in the lobby. Match reconnect reservations are never replaced by bots. A room with no remaining human members is deleted, and an all-human-disconnected room freezes until a valid reconnect or reservation expiry. No extra hosting service or AI API is required. See the root README for controls and automated test scope.
