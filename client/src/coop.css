@@ -3,3 +3,5 @@
 #co-connection{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:40;width:550px;max-width:90vw;padding:24px;background:#080e18f5;border:2px solid #ffbb58;text-align:center}#co-connection p{line-height:1.6}
 
 #co-ai-label{display:flex;align-items:center;gap:.6rem}#co-ai{width:1.3rem;height:1.3rem}#co-ai-help{max-width:36rem;font-size:.9rem;color:#a7c5d8}
+
+#co-boss{position:fixed;top:36px;left:50%;transform:translateX(-50%);width:min(420px,44vw);z-index:9;padding:12px;background:#161226ef;border:1px solid #b6a0f0;border-radius:8px;text-align:center}#co-boss progress{width:100%;height:15px;accent-color:#e477dc}#co-boss-warning{font-size:13px;margin:6px 0;color:#ffca8a}#co-ai-strength{font:inherit;background:#102033;color:white;padding:8px;border:1px solid #557584;border-radius:4px}

@@ -31,9 +31,9 @@ test('AI follows humans around cover without crossing collision boundaries',()=>
 });
 
 test('AI attacks with ordinary damage/cooldowns, earns XP and cannot damage humans',()=>{
- const r=mixed();const b=bots(r)[0],h=r.players.get('h0')!;for(const other of bots(r).slice(1))r.remove(other.id);h.x=0;h.z=8;b.x=0;b.z=6;const e=r.enemies[0];r.enemies=[e];r.pending=['armored'];e.x=0;e.z=8;e.health=75;e.cooldown=99;tick(r,1);assert.equal(e.health,50);assert.equal(b.meleeCooldown,.45);assert.equal(h.health,100);tick(r,1);assert.equal(e.health,50);tick(r,25);assert.equal(e.health,0);assert.equal(h.progression.xp,30);assert.equal(b.progression.xp,30);
+ const r=mixed();const b=bots(r)[0],h=r.players.get('h0')!;for(const other of bots(r).slice(1))r.remove(other.id);h.x=0;h.z=8;b.x=0;b.z=6;const e=r.enemies[0];r.enemies=[e];r.pending=['armored'];e.x=0;e.z=8;e.health=10;e.cooldown=99;tick(r,1);assert.equal(e.health,5);assert.equal(b.meleeCooldown,.45);assert.equal(h.health,100);tick(r,1);assert.equal(e.health,5);tick(r,40);assert.equal(e.health,0);assert.equal(h.progression.xp,30);assert.equal(b.progression.xp,30);
  // Ranged decisions create ordinary projectiles; cover stops shots via shared logic.
- e.health=75;e.x=0;e.z=14;b.x=0;b.z=4;b.meleeCooldown=0;tick(r,1);assert(r.shots.some(s=>s.owner===b.id));assert.equal(b.fireCooldown,.45);
+ tick(r,40);e.health=75;e.x=0;e.z=12;b.x=0;b.z=6;b.meleeCooldown=0;let fired=false;for(let n=0;n<80&&!fired;n++){tick(r,1);fired=r.shots.some(s=>s.owner===b.id);}assert(fired);assert.equal(b.fireCooldown,.45);
 });
 
 test('AI cloak heals at 5 HP/s, respects cooldown and max HP, and enemy attacks down AI normally',()=>{
@@ -48,12 +48,7 @@ test('AI revives a downed human through 3 seconds of cloak; attacks/damage inter
  b.hunter.cooldown=0;tick(r,61);assert(!h.downed);assert.equal(h.health,50);assert.equal(r.host,'h0');assert.equal(r.players.size,6);
 });
 
-test('AI can complete all three waves with autonomous decisions and ordinary upgrades',()=>{
- for(const humans of [1,2]){const r=mixed(humans);let peak=0;for(let i=0;i<12000&&r.phase==='playing';i++){r.tick(.05);peak=Math.max(peak,...bots(r).map(p=>p.progression.level));}
-  console.log(`autonomous ${humans} human / ${6-humans} AI: ${r.phase}, wave ${r.wave}, ${r.time.toFixed(1)}s, AI level ${peak}`);assert.equal(r.phase,'victory');assert.equal(r.wave,3);assert(peak>=3);assert(bots(r).some(p=>p.progression.attackDamage>25));
-  r.restart(r.host);assert.equal(r.players.size,humans);assert.equal(r.pickups.length,0);assert.equal(r.shots.length,0);assert.equal(r.target.health,100);assert(r.npc.downed);
- }
-});
+test('Support AI no longer grant an unattended human automatic victory or outlevel humans',()=>{for(const humans of [1,2]){const r=mixed(humans);for(let i=0;i<2400&&r.phase==='playing';i++)r.tick(.05);assert.notEqual(r.phase,'victory');assert(bots(r).every(p=>p.progression.level===r.players.get(r.host)!.progression.level));}});
 
 const delay=(ms:number)=>new Promise(r=>setTimeout(r,ms));
 async function wait(fn:()=>boolean){const end=Date.now()+5000;while(!fn()){assert(Date.now()<end,'network timeout');await delay(10);}}
@@ -62,7 +57,7 @@ test('real WebSockets: AI toggle authorization, one/two humans, reserved reconne
  const clients:{ws:WebSocket;id:string;token:string;state?:Snapshot;errors:string[]}[]=[];
  const connect=async()=>{const c={ws:new WebSocket(`ws://127.0.0.1:${address.port}/ws`),id:'',token:'',state:undefined as Snapshot|undefined,errors:[] as string[]};clients.push(c);c.ws.on('message',d=>{const m=JSON.parse(d.toString());if(m.type==='welcome'){c.id=m.id;c.token=m.resumeToken;}if(m.type==='snapshot')c.state=m;if(m.type==='error')c.errors.push(m.message);});await wait(()=>!!c.id);return c;};const send=(c:typeof clients[number],m:unknown)=>c.ws.send(JSON.stringify(m));
  try{const a=await connect();send(a,{type:'create',name:'Host',protocol:PROTOCOL});await wait(()=>!!a.state);const code=a.state!.code;send(a,{type:'allowAI',enabled:'yes'});await wait(()=>a.errors.length===1);assert.match(a.errors[0],/Invalid AI/);send(a,{type:'allowAI',enabled:true});await wait(()=>!!a.state!.allowAI);assert.equal(a.state!.players.length,1);send(a,{type:'ready',ready:true});await wait(()=>a.state!.players.length===6);assert.equal(a.state!.players.filter(p=>p.ai).length,5);assert.equal(a.state!.phase,'lobby');
-  const b=await connect();send(b,{type:'join',name:'Guest',protocol:PROTOCOL,code});await wait(()=>b.state?.players.filter(p=>p.ai).length===4);assert.equal(b.state!.players.length,6);send(b,{type:'allowAI',enabled:false});await wait(()=>b.errors.length===1);assert.match(b.errors[0],/host/);send(b,{type:'ready',ready:true});await wait(()=>a.state!.players.every(p=>p.ready));send(a,{type:'start'});await wait(()=>b.state?.phase==='playing');
+  const b=await connect();send(b,{type:'join',name:'Guest',protocol:PROTOCOL,code});await wait(()=>b.state?.players.filter(p=>p.ai).length===4);assert.equal(b.state!.players.length,6);send(b,{type:'allowAI',enabled:false});await wait(()=>b.errors.length===1);assert.match(b.errors[0],/host/);send(b,{type:'ready',ready:true});await wait(()=>a.state!.players.some(p=>p.id===b.id&&p.ready)&&a.state!.players.every(p=>p.ready));send(a,{type:'start'});await wait(()=>b.state?.phase==='playing');
   const room=backend.rooms.get(code)!;a.ws.close();await wait(()=>b.state!.host===b.id&&!b.state!.players.find(p=>p.id===a.id)!.connected);assert.equal(bots(room).length,4);const resumed=await connect();send(resumed,{type:'resume',id:a.id,token:a.token,code});await wait(()=>resumed.state?.players.every(p=>p.connected)===true);assert.equal(resumed.id,a.id);assert.equal(new Set(resumed.state!.players.map(p=>p.id)).size,6);assert.equal(bots(room).length,4);
   resumed.ws.close();b.ws.close();await wait(()=>![...room.players.values()].some(p=>!p.ai&&p.connected));const time=room.time;await delay(100);assert.equal(room.time,time);assert.equal(room.host,'');now+=60001;await wait(()=>backend.rooms.size===0);const late=await connect();send(late,{type:'resume',id:a.id,token:a.token,code});await wait(()=>late.errors.length>0);assert.match(late.errors[0],/expired/);
  }finally{clients.forEach(c=>c.ws.close());await backend.close();}

@@ -93,3 +93,9 @@ Temporarily disable a device network for a few seconds, then restore it within 6
 ### v0.11.0 AI teammates
 
 Host-only lobby message: `{type:"allowAI", enabled:true|false}`. Protocol 10 snapshots include `allowAI` and a boolean `ai` on each player. The host's Ready command fills bots; it does not start a match. Bots are authoritative room members, have no WebSocket or resume session, and cannot be host. Human join removes a bot in the lobby. Match reconnect reservations are never replaced by bots. A room with no remaining human members is deleted, and an all-human-disconnected room freezes until a valid reconnect or reservation expiry. No extra hosting service or AI API is required. See the root README for controls and automated test scope.
+
+### v0.12.0 boss and supportive AI
+
+Protocol 11 adds the host-only lobby message `{type:"aiStrength",strength:"support"|"balanced"|"strong"}`; default is Support. Snapshots include `aiStrength` and nullable `boss` (shared HP, locked team counts, phase, attack/warning timing, danger zones and AI damage total). All boss outcomes, warnings, collision, projectile hits and XP are server-authoritative. Human client messages cannot set boss health, phase or outcome. Boss scaling records human/AI counts at match start and does not change on reconnects or removals. Existing in-memory rooms and 60-second reconnect reservations remain in use; backend restarts still lose rooms.
+
+All humans, including reserved/disconnected or downed humans, receive full shared enemy XP. AI progression mirrors the current human host rather than advancing independently. AI damage/attack frequency/aggression are limited by strength. Boss AI assist additionally requires recent human combat, has a shared 35% HP budget, and cannot finish the boss. See the root README for exact attack timings, scale formula, balance values and test scope.

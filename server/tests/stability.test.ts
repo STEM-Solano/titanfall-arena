@@ -43,6 +43,7 @@ test('six WebSocket clients observe combat, revival, progression, three waves, v
     advance(85);await sync(s=>s.wave===wave+1&&s.enemies.length===(wave===1?9:15));
    }
   }
+  assert(room.boss);await sync(s=>s.phase==='playing'&&!!s.boss);room.boss.health=1;players[0].progression.pending=0;players[0].meleeCooldown=0;players[0].x=room.boss.x;players[0].z=room.boss.z+2.6;await action(0,'melee');
   await sync(s=>s.phase==='victory'&&s.players.every(p=>p.level>=3));assert.equal(players[0].progression.attackDamage>25,true);assert(players[2].hunter.cooldownDuration<15);
   send(0,{type:'restart'});await sync(s=>s.phase==='lobby'&&s.players.every(p=>p.level===1&&p.xp===0&&p.damage===25&&p.maxHealth===100&&p.cooldownDuration===15)&&s.pickups.length===0&&s.shots.length===0);
   for(let i=0;i<6;i++)send(i,{type:'ready',ready:true});await until(()=>clients[0].state!.players.every(p=>p.ready));send(0,{type:'start'});await until(()=>room.phase==='playing');players.forEach(p=>{p.downed=true;p.health=0;});advance(1);await sync(s=>s.phase==='defeat'&&s.players.length===6);send(clients.findIndex(c=>c.id===room.host),{type:'restart'});await sync(s=>s.phase==='lobby'&&s.players.every(p=>!p.downed&&p.health===100));

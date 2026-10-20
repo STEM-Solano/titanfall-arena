@@ -119,3 +119,25 @@ AI decisions run on the existing server without a new service. Bots follow livin
 Validation: 29 tests include the previous multiplayer/single-player regression suite, lobby toggle permission/validation, one-human/five-AI and two-human/four-AI teams, six humans replacing all bots, seventh-player rejection, navigation/collisions, damage/cooldowns, cloak/healing, revival in both directions, full-team defeat, autonomous three-wave victory, XP/upgrades/restart, real local WebSocket reconnection without duplicate members, all-human-offline freeze, expiry and room cleanup. Both autonomous mixed teams completed three waves in about 35 seconds of simulated game time with stationary human participants. These are simulation results, not real-device validation. Run `npm test`, `npm run check`, `npm run build`, and `npm run build:server`.
 
 Protocol is now 10: refresh every browser after deployment and create a fresh room. Client and backend version are v0.11.0. iPhone layout and mobile zoom remain pending. No bosses or PvP.
+
+### Milestone 12 — v0.12.0 Nullforge Sentinel and AI balance
+
+Co-op now ends with the original **Nullforge Sentinel**, a stationary sci-fi relay guardian with a shared health bar, after the three existing waves. Wave three alone no longer grants victory. The single-player encounter remains unchanged.
+
+The boss appears safely away from the party, with a three-second arrival delay before its first warning. **Lance** marks a red strip (2.4 m wide) for 1.6 seconds, then deals 24 damage once to occupants. **Pulse** marks a 3.5 m radius orange circle for 1.8 seconds, then deals 18 damage once. Move outside marked zones before impact. Below 50% HP, warnings last 1.25 seconds, the rest between attacks drops from 3 to 2.2 seconds, and Pulse marks two circles. Warnings lock their positions when shown. Cloak hides players from new boss targeting, but does not protect someone standing in an already marked area; impact interrupts revival normally. The HUD shows boss direction/distance when no attack is warning. The boss body blocks movement; ranged shots respect cover, and melee uses the existing 3 m range.
+
+Boss HP = `600 + 300 × (human count − 1) + 100 × AI count`. Counts lock at match start, so disconnects, downed players, host changes, and reservation expiry cannot reduce the boss HP. Examples: 1H/5AI = 1100 HP, 2H/4AI = 1300 HP, 2H/0AI = 900 HP, 6H/0AI = 2100 HP. AI assist only while a human has attacked within the last three seconds; combined AI damage is capped at 35% of maximum boss HP and cannot land the final hit. Humans must deal the majority of damage. Boss defeat awards 200 shared XP and team victory. Restart removes the boss, warnings, shots, pickups and progression, resets all human health, and returns to the existing Ready flow.
+
+Host-only lobby AI strength settings (changing one resets host Ready and removes AI until Ready again):
+
+| Setting | AI damage multiplier | Minimum attack interval | Enemy engagement radius around humans | Follow leash |
+| --- | --- | --- | --- | --- |
+| Support (default) | 20% | 1.8 s | 6 m | 4 m |
+| Balanced | 35% | 1.25 s | 9 m | 6 m |
+| Strong | 50% | 0.9 s | 12 m | 8 m |
+
+AI prioritize following, reviving humans, healing, and dodging boss danger zones. They reposition near humans for a clear firing line rather than pursuing enemies across the map. These settings add stricter limits on top of existing movement, collision, cloak, health, attack and revival rules. AI start at the reset host level (level 1) and follow the human host's level/XP throughout the run, including host reassignment. AI never level ahead of humans; their automatic upgrades prioritize health, cloak, then damage. Enemy kills by any teammate award the full enemy XP to every human member, including downed players and disconnected players whose 60-second reservation still exists. AI display the host's progression. Training targets award no XP.
+
+Validation: 38 automated tests include full encounters with ordinary simulated player inputs for 1H/5AI, 2H/4AI, 2H/0AI and 6H/0AI; boss spawning, locked scaling, warning geometry/dodging, both phases, damage and projectile cover, AI strength/cadence/progression/XP, AI boss damage ceiling, revival during the boss, defeat, victory and restart. Real local WebSocket tests verify identical boss health/phase/zones across clients and persistence through host transfer/reconnect. Browser-controller tests cover strength selection and boss health/warning HUD. Tests use accelerated simulation and some explicit fixtures; they are separate from real-device verification. Existing single-player, controls, multiplayer capacity, reconnect expiry, upgrade pause isolation and movement-buffer regressions remain enabled.
+
+Client/backend version v0.12.0, protocol 11. Refresh every browser and create a fresh room after deployment. Real-device boss readability, dodge timing and AI feel need player feedback. iPhone layout and zoom remain unresolved and deferred. No PvP.
